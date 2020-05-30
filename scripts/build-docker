@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+
+
+pushd dockerfiles
+docker build -t julia-clj-docker -f Dockerfile --build-arg USERID=$(id -u) --build-arg GROUPID=$(id -u) --build-arg USERNAME=$USER .
+popd

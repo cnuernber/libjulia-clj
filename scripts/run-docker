@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+scripts/build-docker
+
+## Need this for julia magic
+export JULIA_COPY_STACKS=yes
+
+docker run --rm -it -u $(id -u):$(id -g) \
+  -v /$HOME/.m2:/home/$USER/.m2 \
+  -v $(pwd)/:/julia-clj \
+  --net=host -w /julia-clj \
+  julia-clj-docker lein update-in :dependencies conj \[nrepl\ \"0.6.0\"\]\
+     -- update-in :plugins conj \[cider/cider-nrepl\ \"0.22.4\"\]\
+     -- repl :headless :host localhost
