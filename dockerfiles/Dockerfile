@@ -29,12 +29,12 @@ USER $USERNAME
 
 WORKDIR /home/$USERNAME
 
-RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.4/julia-1.4.2-linux-x86_64.tar.gz \
-  && tar -xvzf julia-1.4.2-linux-x86_64.tar.gz
+RUN wget https://julialang-s3.julialang.org/bin/linux/x64/1.5/julia-1.5.3-linux-x86_64.tar.gz \
+  && tar -xvzf julia-1.5.3-linux-x86_64.tar.gz
 
-ENV PATH /home/$USERNAME/julia-1.4.2/bin:$PATH
-ENV JULIA_HOME /home/$USERNAME/julia-1.4.2
-ENV LD_LIBRARY_PATH /home/$USERNAME/julia-1.4.2/lib
+ENV PATH /home/$USERNAME/julia-1.5.3/bin:$PATH
+ENV JULIA_HOME /home/$USERNAME/julia-1.5.3
+ENV LD_LIBRARY_PATH /home/$USERNAME/julia-1.5.3/lib
 ENV JULIA_COPY_STACKS=yes
 
 RUN lein -v
