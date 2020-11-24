@@ -4,7 +4,6 @@
   :license {:name "EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0"
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
-                 [techascent/tech.datatype "5.0-beta-37"]]
-  :java-source-paths ["java"]
-  :aot [julia-clj.main]
-  :main julia-clj.main)
+                 [cnuernber/dtype-next "6.00-beta-3"]
+                 [techascent/tech.jna "4.05"]]
+  :java-source-paths ["java"])

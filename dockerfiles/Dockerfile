@@ -6,7 +6,7 @@ FROM ubuntu:latest
 ARG CLOJURE_TOOLS_VERSION=1.10.1.507
 
 
-RUN apt-get -qq update && apt-get -qq -y install curl wget bzip2 openjdk-11-jdk-headless \
+RUN apt-get -qq update && apt-get -qq -y install curl wget bzip2 openjdk-8-jdk-headless \
     && curl -o install-clojure https://download.clojure.org/install/linux-install-${CLOJURE_TOOLS_VERSION}.sh \
     && chmod +x install-clojure \
     && ./install-clojure && rm install-clojure \
