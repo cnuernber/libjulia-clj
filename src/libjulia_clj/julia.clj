@@ -11,5 +11,6 @@
 
 (defn eval-string
   [str-data]
-  (-> (base/jl_eval_string str-data)
-      (base/jl->clj)))
+  (let [retval (base/jl_eval_string str-data)]
+    (base/check-last-error)
+    (base/julia->jvm retval nil)))

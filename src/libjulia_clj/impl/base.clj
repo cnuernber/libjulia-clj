@@ -1,12 +1,13 @@
 (ns libjulia-clj.impl.base
-  (:require [tech.jna :as jna]
-            [tech.jna.base :as jna-base]
+  (:require [tech.v3.jna :as jna]
+            [tech.v3.jna.base :as jna-base]
             [tech.v3.datatype :as dtype]
             [tech.v3.datatype.errors :as errors]
             [tech.v3.datatype.casting :as casting]
             [tech.v3.datatype.pprint :as dtype-pp]
             [tech.v3.datatype.native-buffer :as native-buffer]
             [tech.v3.datatype.jna :as dtype-jna]
+            [tech.v3.tensor.dimensions.analytics :as dims-analytics]
             [tech.v3.resource :as resource]
             [clojure.java.io :as io]
             [clojure.string :as s]
@@ -112,7 +113,7 @@
 (def-julia-fn jl_symbol
   "Create a julia symbol from a string"
   Pointer
-  [symbol-name (comp jna/string->ptr str)])
+  [symbol-name str])
 
 
 (defn jl_symbol_name
@@ -361,16 +362,31 @@
   [arg str])
 
 
+(def-julia-fn jl_string_ptr
+  "Convert a julia string to the jvm"
+  String
+  [arg jl_value_t])
+
+
 (def-julia-fn jl_array_size
   "Return the size of this dimension of the array"
   jna/size-t-type
   [ary jl_value_t]
   [d int])
 
-
 (def-julia-fn jl_array_rank
   "Return the rank of the array"
   Integer
+  [ary jl_value_t])
+
+(def-julia-fn jl_array_eltype
+  "Return elemwise datatype of the array"
+  Pointer
+  [ary jl_value_t])
+
+(def-julia-fn jl_array_ptr
+  "Return a pointer to the elemwise data of the array"
+  Pointer
   [ary jl_value_t])
 
 
@@ -459,6 +475,26 @@
              :delete! delete!})))
 
 
+(defn root-ptr!
+  "Root a pointer and set a GC hook that will unroot it when the time comes.
+  Defaults to :auto track type"
+  ([^Pointer value options]
+   (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
+         native-value (Pointer/nativeValue value)]
+     (when (:log-level options)
+       (log/logf (:log-level options) "Rooting address  0x%016X" native-value))
+     (jl_call3 set-index! jvm-refs native-value value)
+     (resource/track value {:track-type (:resource-type options :auto)
+                            :dispose-fn (fn []
+                                          (when (:log-level options)
+                                            (log/logf (:log-level options)
+                                                      "Unrooting address 0x%016X"
+                                                      native-value))
+                                          (jl_call2 delete! jvm-refs native-value))})))
+  ([value]
+   (root-ptr! value nil)))
+
+
 (defonce julia-typemap* (atom {:typeid->typename {}
                                :typename->typeid {}}))
 
@@ -516,6 +552,39 @@
       (.toString)))
 
 
+(defonce error-handling-data* (atom nil))
+
+
+(defn initialize-error-handling!
+  []
+  (errors/when-not-error
+   (nil? @error-handling-data*)
+   "Error handling initialized twice!")
+  (reset! error-handling-data*
+          {:sprint (jl_get_function (jl_base_module) "sprint")
+           :showerror (jl_get_function (jl_base_module) "showerror")
+           :catch-backtrace (jl_get_function (jl_base_module) "catch_backtrace")}))
+
+
+(declare julia->jvm)
+
+
+(defn sprint-last-error
+  ^String [exc]
+  (when exc
+    (let [{:keys [sprint showerror catch-backtrace]} @error-handling-data*
+          bt (jl_call0 catch-backtrace)]
+      (-> (jl_call3 sprint showerror exc bt)
+          (julia->jvm nil)))))
+
+
+(defn check-last-error
+  []
+  (when-let [exc (jl_exception_occurred)]
+    (errors/throwf "Julia error:\n%s" (or (sprint-last-error exc)
+                                          "unable to print error"))))
+
+
 (defn initialize!
   "Initialize julia optionally providing an explicit path which will override
   the julia library search mechanism.
@@ -540,7 +609,9 @@
          (disable-julia-signals!)
          (jl_init__threading)
          (initialize-typemap!)
-         (initialize-julia-root-map!))
+         (initialize-julia-root-map!)
+         (initialize-error-handling!)
+         )
        (catch Throwable e
          (throw (ex-info (format "Failed to find julia library.  Is JULIA_HOME unset?  Attempted %s"
                                  julia-library-path)
@@ -598,7 +669,8 @@
 
 (extend-type Object
   PToJulia
-  (->julia [item] (errors/throwf "Item %s is not convertible to julia" item)))
+  (->julia [item]
+    (errors/throwf "Item %s is not convertible to julia" item)))
 
 
 (extend-protocol PToJulia
@@ -619,7 +691,9 @@
   Symbol
   (->julia [item] (jl_symbol (name item)))
   Keyword
-  (->julia [item] (jl_symbol (name item))))
+  (->julia [item] (jl_symbol (name item)))
+  Pointer
+  (->julia [item] item))
 
 (defmethod julia->jvm :jl-bool-type
   [julia-val options]
@@ -669,10 +743,14 @@
   [julia-val options]
   (jl_unbox_float32 julia-val))
 
+(defmethod julia->jvm :jl-string-type
+  [julia-val options]
+  (jl_string_ptr julia-val))
+
 
 (defn jvm-args->julia
   [args]
-  (map ->julia args))
+  (mapv #(when % (->julia %)) args))
 
 
 (defmacro with-disabled-gc
@@ -693,19 +771,22 @@
   (resource/stack-resource-context
    ;;do not GC my stuff when I am marshalling function arguments to julia
    (let [jl-args (with-disabled-gc (jvm-args->julia args))]
-     (case (count jl-args)
-       0 (jl_call0 fn-handle)
-       1 (jl_call1 fn-handle (first jl-args))
-       2 (jl_call2 fn-handle (first jl-args) (second jl-args))
-       3 (apply jl_call3 fn-handle jl-args)
-       (let [n-args (count args)
-             ptr-buf (dtype/make-container :native-heap ptr-dtype
-                                           (mapv #(if %
-                                                    (Pointer/nativeValue ^Pointer %)
-                                                    0)
-                                                 jl-args)
-                                           {:resource-type :stack})]
-         (jl_call fn-handle ptr-buf n-args))))))
+     (let [retval
+           (case (count jl-args)
+             0 (jl_call0 fn-handle)
+             1 (jl_call1 fn-handle (first jl-args))
+             2 (jl_call2 fn-handle (first jl-args) (second jl-args))
+             3 (apply jl_call3 fn-handle jl-args)
+             (let [n-args (count args)
+                   ptr-buf (dtype/make-container :native-heap ptr-dtype
+                                                 {:resource-type :stack}
+                                                 (mapv #(if %
+                                                          (Pointer/nativeValue ^Pointer %)
+                                                          0)
+                                                       jl-args))]
+               (jl_call fn-handle ptr-buf n-args)))]
+       (check-last-error)
+       retval))))
 
 
 (defn call-function
@@ -766,17 +847,9 @@
        (remove nil?)
        (sort-by first)))
 
-(def unsafe-name-map
-  {"def" "deff"
-   "'" "quote"
-   ":" "colon"
-   "/" "div"
-   "//" "divdiv"
-   "div" "divv"})
-
 
 (defmacro define-module-publics
-  [module-name]
+  [module-name unsafe-name-map]
   (if-let [mod (jl_eval_string module-name)]
     (let [publics (module-publics mod)]
       `(do
@@ -792,6 +865,46 @@
                                `(defn ~(symbol sym-name)
                                   [& ~'args]
                                   (call-function ~symptr-sym ~'args))]
-                              [`(def ~symptr-sym (julia->jvm (jl_get_global ~'module (jl_symbol ~sym-rawname))
-                                                             {:unrooted? true}))])))))))
+                              [`(def ~(symbol sym-name) (julia->jvm (jl_get_global ~'module (jl_symbol ~sym-rawname))
+                                                                    {:unrooted? true}))])))))))
     (errors/throwf "Failed to find module: %s" module-name)))
+
+
+(def jl-type->datatype
+  {:jl-bool-type :boolean
+   :jl-int-8-type :int8
+   :jl-uint-8-type :uint8
+   :jl-int-16-type :int16
+   :jl-uint-16-type :uint16
+   :jl-int-32-type :int32
+   :jl-uint-32-type :uint32
+   :jl-int-64-type :int64
+   :jl-uint-64-type :uint64
+   :jl-float-32-type :float32
+   :jl-float-64-type :float64})
+
+
+(def datatype->jl-type
+  (set/map-invert jl-type->datatype))
+
+
+(defn julia-array->nd-descriptor
+  [ary-ptr]
+  (let [rank (jl_array_rank ary-ptr)
+        shape (mapv #(jl_array_size ary-ptr %) (range rank))
+        data (jl_array_ptr ary-ptr)
+        eltype (jl_array_eltype ary-ptr)
+        jl-type (get-in @julia-typemap* [:typeid->typename eltype])
+        dtype (get jl-type->datatype jl-type :object)
+        byte-width (casting/numeric-byte-width dtype)
+        ;;TODO - Figure out to handle non-packed data.  This is a start, however.
+        strides (->> (dims-analytics/shape-ary->strides shape)
+                     (mapv #(* byte-width (long %))))
+        ]
+    ;;Now we root the array
+
+    {:ptr (Pointer/nativeValue data)
+     :elemwise-datatype dtype
+     :shape shape
+     :strides strides
+     :julia-array ary-ptr}))

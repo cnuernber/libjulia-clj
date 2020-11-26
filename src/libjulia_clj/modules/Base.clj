@@ -7,4 +7,13 @@
                             replace reverse sort time vec get identity]))
 
 
-(base/define-module-publics "Base")
+(base/define-module-publics
+  "Base"
+  ;;Remap names to avoid so compilation errors
+  {"def" "jl-def"
+   "'" "quote"
+   ":" "colon"
+   "/" "div"
+   "//" "divdiv"
+   "div" "divv"
+   "Enum" "jl-Enum"})
