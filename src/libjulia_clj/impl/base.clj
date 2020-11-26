@@ -489,7 +489,6 @@
    (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
          native-value (Pointer/nativeValue value)
          untracked-value (Pointer. native-value)]
-     (throw (Exception. (format "Rooting object! %s" options)))
      (when (:log-level options)
        (log/logf (:log-level options) "Rooting address  0x%016X" native-value))
      (jl_call3 set-index! jvm-refs untracked-value value)

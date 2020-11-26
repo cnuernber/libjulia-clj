@@ -1,31 +1,41 @@
 # julia-clj
 
-Use julia via jna.  Currently any call to initialize will cause a crash to happen
-sooner or later so we are still at the first step.
+
+* [API docs](https://cnuernber.github.io/libjulia-clj/)
 
 ## Usage
 
-In one terminal type:
+Install julia and set JULIA_HOME:
+
 ```console
-scripts/run-docker
+wget https://julialang-s3.julialang.org/bin/linux/x64/1.5/julia-1.5.3-linux-x86_64.tar.gz \
+  && tar -xvzf julia-1.5.3-linux-x86_64.tar.gz
+
+export JULIA_HOME=$(pwd)/julia-1.5.3
 ```
 
-Then using emacs or your editor of choice connect to the repl.
+In your repl, load the julia base namespace (it calls initialize! automatically):
 
 ```clojure
-(require '[julia-clj.core :as jc])
-(jc/jl_is_initialized) ;; 0
-(jc/jl_init__threading)
-(jc/jl_is_initialized) ;; 1
-
-(System/gc) ;;crash after one or two of these.
+user> (require '[libjulia-clj.modules.Base :as Base])
+;;Long pause, loading metadata for all of Base takes a while.  Perhaps better to write a concrete namespace....
+Nov 26, 2020 12:26:01 PM clojure.tools.logging$eval8218$fn__8221 invoke
+INFO: Library /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so found at [:system "/home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so"]
+nil
+user> (Base/ones 3 4)
+Nov 26, 2020 12:26:09 PM clojure.tools.logging$eval8218$fn__8221 invoke
+INFO: Reference thread starting
+[1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0]
+user> (require '[tech.v3.tensor :as dtt])
+nil
+user> ;;zero-copy...
+user> (dtt/as-tensor (Base/ones 3 4))
+#tech.v3.tensor<float64>[3 4]
+[[1.000 1.000 1.000 1.000]
+ [1.000 1.000 1.000 1.000]
+ [1.000 1.000 1.000 1.000]]
 ```
 
-Crash currently is (from julia):
-```console
-fatal: error thrown and no exception handler available.
-ReadOnlyMemoryError()
-```
 
 ## License
 
