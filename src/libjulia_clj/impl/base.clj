@@ -2,12 +2,14 @@
   (:require [tech.v3.jna :as jna]
             [tech.v3.jna.base :as jna-base]
             [tech.v3.datatype :as dtype]
+            [tech.v3.datatype.protocols :as dtype-proto]
             [tech.v3.datatype.errors :as errors]
             [tech.v3.datatype.casting :as casting]
             [tech.v3.datatype.pprint :as dtype-pp]
             [tech.v3.datatype.native-buffer :as native-buffer]
             [tech.v3.datatype.jna :as dtype-jna]
             [tech.v3.tensor.dimensions.analytics :as dims-analytics]
+            [tech.v3.tensor :as dtt]
             [tech.v3.resource :as resource]
             [clojure.java.io :as io]
             [clojure.string :as s]
@@ -53,7 +55,9 @@
 
 (defn jl_value_t
   ^Pointer [item]
-  (jna/ensure-ptr item))
+  (if item
+    (jna/ensure-ptr item)
+    (Pointer. 0)))
 
 
 (defn jl_module_t
@@ -483,14 +487,14 @@
          native-value (Pointer/nativeValue value)]
      (when (:log-level options)
        (log/logf (:log-level options) "Rooting address  0x%016X" native-value))
-     (jl_call3 set-index! jvm-refs native-value value)
+     (jl_call3 set-index! jvm-refs (jl_box_int64 native-value) value)
      (resource/track value {:track-type (:resource-type options :auto)
                             :dispose-fn (fn []
                                           (when (:log-level options)
                                             (log/logf (:log-level options)
                                                       "Unrooting address 0x%016X"
                                                       native-value))
-                                          (jl_call2 delete! jvm-refs native-value))})))
+                                          (jl_call2 delete! jvm-refs (jl_box_int64 native-value)))})))
   ([value]
    (root-ptr! value nil)))
 
@@ -585,6 +589,26 @@
                                           "unable to print error"))))
 
 
+(defonce julia-tostring-fns* (atom nil))
+
+(defn initialize-generic-tostring!
+  []
+  (errors/when-not-error
+   (nil? @julia-tostring-fns*)
+   "Tostring functionality initialized twice!")
+  (reset! julia-tostring-fns*
+          {:sprint (jl_get_function (jl_base_module) "sprint")
+           :dump (jl_get_function (jl_base_module) "dump")}))
+
+
+(defn jl-obj->str
+  ^String [jl-ptr]
+  (when jl-ptr
+    (let [{:keys [sprint dump]} @julia-tostring-fns*]
+      (-> (jl_call2 sprint dump jl-ptr)
+          (julia->jvm nil)))))
+
+
 (defn initialize!
   "Initialize julia optionally providing an explicit path which will override
   the julia library search mechanism.
@@ -611,7 +635,7 @@
          (initialize-typemap!)
          (initialize-julia-root-map!)
          (initialize-error-handling!)
-         )
+         (initialize-generic-tostring!))
        (catch Throwable e
          (throw (ex-info (format "Failed to find julia library.  Is JULIA_HOME unset?  Attempted %s"
                                  julia-library-path)
@@ -888,23 +912,69 @@
   (set/map-invert jl-type->datatype))
 
 
+(defn julia-eltype->datatype
+  [eltype]
+  (let [jl-type (get-in @julia-typemap* [:typeid->typename eltype])]
+    (get jl-type->datatype jl-type :object)))
+
+
 (defn julia-array->nd-descriptor
   [ary-ptr]
   (let [rank (jl_array_rank ary-ptr)
         shape (mapv #(jl_array_size ary-ptr %) (range rank))
         data (jl_array_ptr ary-ptr)
-        eltype (jl_array_eltype ary-ptr)
-        jl-type (get-in @julia-typemap* [:typeid->typename eltype])
-        dtype (get jl-type->datatype jl-type :object)
+        dtype (-> (jl_array_eltype ary-ptr)
+                  (julia-eltype->datatype))
         byte-width (casting/numeric-byte-width dtype)
         ;;TODO - Figure out to handle non-packed data.  This is a start, however.
         strides (->> (dims-analytics/shape-ary->strides shape)
-                     (mapv #(* byte-width (long %))))
-        ]
-    ;;Now we root the array
-
+                     (mapv #(* byte-width (long %))))]
     {:ptr (Pointer/nativeValue data)
      :elemwise-datatype dtype
      :shape shape
      :strides strides
      :julia-array ary-ptr}))
+
+
+(deftype JuliaArray [^Pointer handle]
+  PToJulia
+  (->julia [item] handle)
+  (as-julia [item] handle)
+  jna/PToPtr
+  (is-jna-ptr-convertible? [this] true)
+  (->ptr-backing-store [this] handle)
+  dtype-proto/PElemwiseDatatype
+  (elemwise-datatype [this]
+    (julia-eltype->datatype (jl_array_eltype handle)))
+  dtype-proto/PShape
+  (shape [this]
+    (let [rank (jl_array_rank handle)]
+      (mapv #(jl_array_size handle %) (range rank))))
+  dtype-proto/PECount
+  (ecount [this]
+    (long (apply * (dtype-proto/shape this))))
+  dtype-proto/PToTensor
+  (as-tensor [this]
+    (-> (julia-array->nd-descriptor handle)
+        (dtt/nd-buffer-descriptor->tensor)))
+  dtype-proto/PToNDBufferDesc
+  (convertible-to-nd-buffer-desc? [this] true)
+  (->nd-buffer-descriptor [this] (julia-array->nd-descriptor handle))
+  dtype-proto/PToNativeBuffer
+  (convertible-to-native-buffer? [this] true)
+  (->native-buffer [this]
+    (dtype-proto/->native-buffer (dtype-proto/as-tensor this)))
+  Object
+  (toString [this]
+    (jl-obj->str handle)))
+
+
+(dtype-pp/implement-tostring-print JuliaArray)
+
+
+
+(defmethod julia->jvm "Array"
+  [jl-ptr options]
+  (when-not (:unrooted? options)
+    (root-ptr! jl-ptr))
+  (JuliaArray. jl-ptr))
