@@ -3,6 +3,9 @@
   (:refer-clojure :exclude [eval]))
 
 
+(base/initialize!)
+
+
 (base/define-module-publics
   "Core"
   {"AssertionError" "jl-AssertionError"

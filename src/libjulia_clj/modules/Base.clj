@@ -6,6 +6,8 @@
                             peek pop! print println rand range rationalize read reduce rem repeat
                             replace reverse sort time vec get identity]))
 
+(base/initialize!)
+
 
 (base/define-module-publics
   "Base"

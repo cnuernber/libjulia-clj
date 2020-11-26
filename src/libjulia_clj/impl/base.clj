@@ -55,9 +55,7 @@
 
 (defn jl_value_t
   ^Pointer [item]
-  (if item
-    (jna/ensure-ptr item)
-    (Pointer. 0)))
+  (jna/ensure-ptr item))
 
 
 (defn jl_module_t
@@ -462,6 +460,11 @@
   (find-deref-julia-symbol "jl_top_module"))
 
 
+(defn jl_nothing
+  ^Pointer []
+  (find-deref-julia-symbol "jl_nothing"))
+
+
 (defonce jvm-julia-roots* (atom nil))
 
 
@@ -484,17 +487,19 @@
   Defaults to :auto track type"
   ([^Pointer value options]
    (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
-         native-value (Pointer/nativeValue value)]
+         native-value (Pointer/nativeValue value)
+         untracked-value (Pointer. native-value)]
+     (throw (Exception. (format "Rooting object! %s" options)))
      (when (:log-level options)
        (log/logf (:log-level options) "Rooting address  0x%016X" native-value))
-     (jl_call3 set-index! jvm-refs (jl_box_int64 native-value) value)
+     (jl_call3 set-index! jvm-refs untracked-value value)
      (resource/track value {:track-type (:resource-type options :auto)
                             :dispose-fn (fn []
                                           (when (:log-level options)
                                             (log/logf (:log-level options)
                                                       "Unrooting address 0x%016X"
                                                       native-value))
-                                          (jl_call2 delete! jvm-refs (jl_box_int64 native-value)))})))
+                                          (jl_call2 delete! jvm-refs untracked-value))})))
   ([value]
    (root-ptr! value nil)))
 
@@ -598,14 +603,17 @@
    "Tostring functionality initialized twice!")
   (reset! julia-tostring-fns*
           {:sprint (jl_get_function (jl_base_module) "sprint")
-           :dump (jl_get_function (jl_base_module) "dump")}))
+           :dump (jl_get_function (jl_base_module) "dump")
+           :print (jl_get_function (jl_base_module) "print")
+           :methods (jl_get_function (jl_base_module) "methods")
+           :length (jl_get_function (jl_base_module) "length")}))
 
 
 (defn jl-obj->str
   ^String [jl-ptr]
   (when jl-ptr
-    (let [{:keys [sprint dump]} @julia-tostring-fns*]
-      (-> (jl_call2 sprint dump jl-ptr)
+    (let [{:keys [sprint dump print]} @julia-tostring-fns*]
+      (-> (jl_call2 sprint print jl-ptr)
           (julia->jvm nil)))))
 
 
@@ -684,11 +692,70 @@
   (fn [julia-val options]
     (jl-ptr->typename julia-val)))
 
+(declare call-function raw-call-function)
+
+
+(deftype GenericJuliaObject [^Pointer handle]
+  PToJulia
+  (->julia [item] handle)
+  (as-julia [item] handle)
+  jna/PToPtr
+  (is-jna-ptr-convertible? [this] true)
+  (->ptr-backing-store [this] handle)
+  Object
+  (toString [this]
+    (jl-obj->str handle)))
+
+(dtype-pp/implement-tostring-print GenericJuliaObject)
+
+
+(defmacro ^:private impl-callable-julia-object
+  []
+  `(deftype ~'CallableJuliaObject [~'handle]
+     PToJulia
+     (->julia [item] ~'handle)
+     (as-julia [item] ~'handle)
+     jna/PToPtr
+     (is-jna-ptr-convertible? [this#] true)
+     (->ptr-backing-store [this#] ~'handle)
+     Object
+     (toString [this]
+       (jl-obj->str ~'handle))
+     IFn
+     ~@(->> (range 16)
+         (map (fn [idx]
+                (let [argsyms (->> (range idx)
+                                   (mapv (fn [arg-idx]
+                                           (symbol (str "arg-" arg-idx)))))]
+                  `(invoke ~(vec (concat ['this]
+                                         argsyms))
+                           (call-function ~'handle ~argsyms nil))))))
+     (applyTo [this# argseq#]
+       (call-function ~'handle argseq# nil))))
+
+
+(impl-callable-julia-object)
+
+
+(dtype-pp/implement-tostring-print CallableJuliaObject)
+
+(defn jl-obj-callable?
+  [jl-obj]
+  (when jl-obj
+    (let [{:keys [methods length]} @julia-tostring-fns*]
+      (try
+        (not= 0 (long (call-function length
+                                     [(raw-call-function methods [jl-obj])])))
+        (catch Throwable e false)))))
+
 
 (defmethod julia->jvm :default
   [julia-val options]
-  (log/debugf "Failed to marshal julia value of type %s" (jl-ptr->typename julia-val))
-  julia-val)
+  (when-not (:unrooted? options)
+    (root-ptr! julia-val))
+  (if (jl-obj-callable? julia-val)
+    (CallableJuliaObject. julia-val)
+    (GenericJuliaObject. julia-val)))
 
 
 (extend-type Object
@@ -774,7 +841,9 @@
 
 (defn jvm-args->julia
   [args]
-  (mapv #(when % (->julia %)) args))
+  (mapv #(if %
+           (->julia %)
+           (jl_nothing)) args))
 
 
 (defmacro with-disabled-gc
@@ -823,39 +892,6 @@
    (call-function fn-handle args nil)))
 
 
-(defmacro ^:private impl-julia-fn
-  []
-  `(deftype ~'JuliaFunction [~'handle ~'options]
-     PToJulia
-     (->julia [item] ~'handle)
-     (as-julia [item] ~'handle)
-     jna/PToPtr
-     (is-jna-ptr-convertible? [this#] true)
-     (->ptr-backing-store [this#] ~'handle)
-     IFn
-     ~@(->> (range 16)
-         (map (fn [idx]
-                (let [argsyms (->> (range idx)
-                                   (map (fn [arg-idx]
-                                          (symbol (str "arg-" arg-idx)))))]
-                  `(invoke ~(vec (concat ['this]
-                                         argsyms))
-                           (call-function ~'handle ~argsyms ~'options))))))
-     (applyTo [this# argseq#]
-       (call-function ~'handle argseq# ~'options))))
-
-
-(impl-julia-fn)
-
-
-;;Hopefully this is rooted.  Not an issue for now.
-(defn make-julia-fn
-  ([handle options]
-   (JuliaFunction. handle options))
-  ([handle]
-   (make-julia-fn handle nil)))
-
-
 (dtype-pp/implement-tostring-print Pointer)
 
 
@@ -875,22 +911,22 @@
 (defmacro define-module-publics
   [module-name unsafe-name-map]
   (if-let [mod (jl_eval_string module-name)]
-    (let [publics (module-publics mod)]
+    (let [publics (module-publics mod)
+          docs-fn (jl_eval_string "Base.Docs.doc")]
       `(do
          (def ~'module (jl_eval_string ~module-name))
          ~@(->> publics
-                (mapcat (fn [[sym {:keys [symbol-type _symbol]}]]
-                          (let [sym-name (name sym)
-                                sym-rawname sym-name
-                                sym-name (get unsafe-name-map sym-name sym-name)
-                                symptr-sym (symbol (str "symptr-" sym-name))]
-                            (if (= symbol-type :jl-function)
-                              [`(def ~symptr-sym (jl_get_global ~'module (jl_symbol ~sym-rawname)))
-                               `(defn ~(symbol sym-name)
-                                  [& ~'args]
-                                  (call-function ~symptr-sym ~'args))]
-                              [`(def ~(symbol sym-name) (julia->jvm (jl_get_global ~'module (jl_symbol ~sym-rawname))
-                                                                    {:unrooted? true}))])))))))
+                (map (fn [[sym {jl-symbol :symbol}]]
+                       (when jl-symbol
+                         (let [sym-name (name sym)
+                               sym-rawname sym-name
+                               sym-name (.replace ^String sym-name "@" "AT")
+                               sym-name (get unsafe-name-map sym-name sym-name)
+                               docs (jl-obj->str (raw-call-function docs-fn [jl-symbol]))]
+                           `(def ~(with-meta (symbol sym-name)
+                                    {:doc docs})
+                              (julia->jvm (jl_get_global ~'module (jl_symbol ~sym-rawname))
+                                          {:unrooted? true})))))))))
     (errors/throwf "Failed to find module: %s" module-name)))
 
 
