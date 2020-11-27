@@ -126,6 +126,7 @@
                               :else
                               "julia")]
      (try
+       (log/infof "Attempting to initialize Julia at %2" julia-library-path)
        (jna-base/load-library julia-library-path)
        (reset! julia-jna/julia-library-path* julia-library-path)
        (when-not (== 1 (julia-jna/jl_is_initialized))
