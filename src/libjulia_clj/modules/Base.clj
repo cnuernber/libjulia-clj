@@ -11,7 +11,7 @@
 
 (base/define-module-publics
   "Base"
-  ;;Remap names to avoid so compilation errors
+  ;;Remap names to avoid compilation errors
   {"def" "jl-def"
    "'" "quote"
    ":" "colon"
