@@ -1,11 +1,15 @@
 (ns libjulia-clj.impl.jna
-  "Low level raw JNA bindings"
+  "Low level raw JNA bindings and some basic initialization facilities"
   (:require [tech.v3.jna :as jna]
             [tech.v3.jna.base :as jna-base]
             [tech.v3.datatype.casting :as casting]
+            [tech.v3.datatype.pprint :as dtype-pp]
+            [camel-snake-kebab.core :as csk]
             [clojure.string :as s]
-            [clojure.java.io :as io])
-  (:import [com.sun.jna Pointer NativeLibrary]))
+            [clojure.java.io :as io]
+            [clojure.set :as set])
+  (:import [com.sun.jna Pointer NativeLibrary]
+           [julia_clj JLOptions]))
 
 
 
@@ -443,3 +447,86 @@
 (defn jl_nothing
   ^Pointer []
   (find-deref-julia-symbol "jl_nothing"))
+
+
+(defonce julia-typemap* (atom {:typeid->typename {}
+                               :typename->typeid {}}))
+
+
+(defn initialize-typemap!
+  []
+  (let [base-types (->> (list-julia-data-symbols)
+                        (map (comp last #(s/split % #"\s+")))
+                        (filter #(.endsWith ^String % "type"))
+                        (map (fn [typename]
+                               [(find-deref-julia-symbol typename)
+                                (keyword (csk/->kebab-case typename))]))
+                        (into {}))]
+    (swap! julia-typemap*
+           (fn [typemap]
+             (-> typemap
+                 (update :typeid->typename merge base-types)
+                 (update :typename->typeid merge (set/map-invert base-types))))))
+  :ok)
+
+
+(defn jl-ptr->typename
+  "If the typename is a known typename, return the keyword typename.
+  Else return typeof_str."
+  [item-ptr]
+  (when (and item-ptr (not= 0 (Pointer/nativeValue item-ptr)))
+    (if-let [retval (get-in @julia-typemap* [:typeid->typename (jl_typeof item-ptr)])]
+      retval
+      (let [^String type-str (jl_typeof_str item-ptr)]
+        (if (.startsWith type-str "#")
+          :jl-function
+          type-str)))))
+
+(def jl-type->datatype
+  {:jl-bool-type :boolean
+   :jl-int-8-type :int8
+   :jl-uint-8-type :uint8
+   :jl-int-16-type :int16
+   :jl-uint-16-type :uint16
+   :jl-int-32-type :int32
+   :jl-uint-32-type :uint32
+   :jl-int-64-type :int64
+   :jl-uint-64-type :uint64
+   :jl-float-32-type :float32
+   :jl-float-64-type :float64})
+
+
+(def datatype->jl-type
+  (set/map-invert jl-type->datatype))
+
+
+(defn julia-eltype->datatype
+  [eltype]
+  (let [jl-type (get-in @julia-typemap* [:typeid->typename eltype])]
+    (get jl-type->datatype jl-type :object)))
+
+
+(defn julia-options
+  ^JLOptions []
+  (JLOptions. (find-julia-symbol "jl_options")))
+
+
+(dtype-pp/implement-tostring-print JLOptions)
+
+
+(defn disable-julia-signals!
+  []
+  (let [opts (julia-options)]
+    (set! (.handle_signals opts) 0)
+    (.writeField opts "handle_signals")))
+
+
+(defmacro with-disabled-julia-gc
+  "Run a block of code with the julia garbage collector temporarily disabled."
+  [& body]
+  `(let [cur-enabled# (julia-jna/jl_gc_is_enabled)]
+     (julia-jna/jl_gc_enable 0)
+     (try
+       ~@body
+       (finally
+         (julia-jna/jl_gc_enable cur-enabled#)))))

@@ -19,5 +19,6 @@
                       :source-uri "https://github.com/cnuernber/libjulia-clj/blob/master/{filepath}#L{line}"
                       :namespaces [libjulia-clj.julia
                                    libjulia-clj.modules.Base
-                                   libjulia-clj.modules.Core]}}}
+                                   libjulia-clj.modules.Core
+                                   libjulia-clj.modules.LinearAlgebra]}}}
   :aliases {"codox" ["with-profile" "codox,dev" "codox"]})
