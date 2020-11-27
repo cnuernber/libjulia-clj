@@ -353,6 +353,22 @@
    (call-function fn-handle args nil)))
 
 
+(defn make-tuple
+  ^Pointer [& args]
+  (resource/stack-resource-context
+   (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+         n-args (count args)
+         ptr-buf (dtype/make-container :native-heap ptr-dtype
+                                       {:resource-type :stack}
+                                       (mapv #(if %
+                                                (Pointer/nativeValue ^Pointer %)
+                                                0)
+                                             jl-args))
+         retval (julia-jna/jl_apply_tuple_type_v ptr-buf n-args)]
+     (check-last-error)
+     (julia-proto/julia->jvm retval nil))))
+
+
 (dtype-pp/implement-tostring-print Pointer)
 
 

@@ -382,6 +382,12 @@
   [ary jl_value_t]
   [d int])
 
+(def-julia-fn jl_apply_tuple_type_v
+  "Create a new tuple type."
+  Pointer
+  [ary jna/ensure-ptr]
+  [d jna/size-t])
+
 (def-julia-fn jl_gc_collect
   "Force a GC run"
   nil)

@@ -64,6 +64,11 @@ user> jl-ary
    (eval-string str-data nil)))
 
 
+(defn tuple
+  "Make a julia tuple from some values."
+  [& args]
+  (apply base/make-tuple args))
+
 
 (defn cycle-gc!
   "Call periodically to release rooted Julia objects.  We root return values if they
