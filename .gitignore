@@ -11,3 +11,4 @@ pom.xml.asc
 .hgignore
 .hg/
 julia-1.5.3*
+julia
