@@ -4,5 +4,7 @@ jdk: openjdk8
 before_install:
   - wget https://julialang-s3.julialang.org/bin/linux/x64/1.5/julia-1.5.3-linux-x86_64.tar.gz && tar -xvzf julia-1.5.3-linux-x86_64.tar.gz
   - export JULIA_HOME=$(pwd)/julia-1.5.3
+  - echo $(julia-1.5.3/bin/julia --version)
+  
 script:
   lein test
