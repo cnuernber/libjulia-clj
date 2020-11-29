@@ -611,8 +611,8 @@
   (->ptr-backing-store [this] handle)
   dtype-proto/PElemwiseDatatype
   (elemwise-datatype [this]
-    (julia-jna/julia-eltype->datatype
-     (julia-jna/jl_array_eltype handle)))
+    (-> (julia-jna/jl_array_eltype handle)
+        (julia-jna/julia-eltype->datatype)))
   dtype-proto/PShape
   (shape [this]
     (let [rank (julia-jna/jl_array_rank handle)]
