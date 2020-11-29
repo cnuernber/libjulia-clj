@@ -226,6 +226,8 @@
   `(deftype ~'CallableJuliaObject [~'handle ~'kw-fn-handle]
      julia-proto/PToJulia
      (->julia [item] ~'handle)
+     julia-proto/PJuliaKWFn
+     (kw-fn [item] ~'kw-fn-handle)
      jna/PToPtr
      (is-jna-ptr-convertible? [this#] true)
      (->ptr-backing-store [this#] ~'handle)
@@ -242,7 +244,7 @@
                            (let [[pos-args# kw-args#] (args->pos-kw-args ~argsyms)]
                              (if (nil? kw-args#)
                                (call-function ~'handle ~argsyms nil)
-                               (call-function-kw ~'kw-fn-handle ~'handle pos-args# kw-args#))))))))
+                               (call-function-kw ~'handle pos-args# kw-args#))))))))
      (applyTo [this# argseq#]
        (let [[pos-args# kw-args#] (args->pos-kw-args argseq#)]
          (if (nil? kw-args#)
@@ -272,6 +274,12 @@
      (call-function kwfunc [jl-fn] options)))
   ([jl-fn]
    (kw-fn jl-fn nil)))
+
+
+(extend-type Object
+  julia-proto/PJuliaKWFn
+  (kw-fn [item]
+    (kw-fn item)))
 
 
 (defmethod julia-proto/julia->jvm :default
@@ -424,7 +432,8 @@
 
 (defn call-function
   "Call a function.  The result will be marshalled back to the jvm and if necessary,
-  rooted."
+  rooted.  This method is normally not necessary but useful if you would like to
+  use keywords in your argument list or specify to avoid rooting the result."
   ([fn-handle args options]
    (-> (raw-call-function fn-handle args)
        (julia-proto/julia->jvm options)))
@@ -432,6 +441,7 @@
    (call-function fn-handle args nil)))
 
 (defn apply-tuple-type
+  "Create a new Julia tuple type from a sequence of types."
   ^Pointer [args & [options]]
   (resource/stack-resource-context
    (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
@@ -448,6 +458,8 @@
 
 
 (defn apply-type
+  "Create a new Julia type from an existing type and a sequence of other
+  types."
   ^Pointer [jl-type args]
   (resource/stack-resource-context
    (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
@@ -456,18 +468,21 @@
            1 (julia-jna/jl_apply_type1 jl-type (first args))
            2 (julia-jna/jl_apply_type2 jl-type (first args) (second args))
            (let [n-args (count args)
-                 ptr-buf (dtype/make-container :native-heap ptr-dtype
-                                               {:resource-type :stack}
-                                               (mapv #(if %
-                                                        (Pointer/nativeValue ^Pointer %)
-                                                        0)
-                                                     args))]
+                 ptr-buf (dtype/make-container
+                          :native-heap ptr-dtype
+                          {:resource-type :stack}
+                          (mapv #(if %
+                                   (Pointer/nativeValue ^Pointer %)
+                                   0)
+                                args))]
              (julia-jna/jl_apply_type jl-type ptr-buf n-args)))]
      (check-last-error)
      (julia-proto/julia->jvm retval nil))))
 
 
 (defn struct
+  "Instantiate a Julia struct type (tuple, NamedTuple, etc).  Use this after
+  apply-tuple-type in order to create an instance of your new type."
   ^Pointer [jl-type args]
   (resource/stack-resource-context
    (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
@@ -485,7 +500,11 @@
 
 (defn tuple
   "Create a julia tuple from a set of arguments.  The tuple type will be the
-  same datatype as the argument types."
+  same datatype as the argument types.
+
+  This function converts the arguments to julia, calls `apply-tuple-type`
+  on the resulting argument types, and then instantiates an instance of
+  the given newly created tuple type."
   [args]
   (let [[jl-args tuple-type]
         (julia-jna/with-disabled-julia-gc
@@ -523,17 +542,20 @@
 
 
 (defn call-function-kw
-  ([kw-fn-handle fn-handle args kw-args options]
-   (call-function kw-fn-handle
+  "Call a julia function and pass in keyword arguments.  This is useful if you
+  would like to specify the arglist and kw-argmap.  Normally this is done for
+  you."
+  ([fn-handle args kw-args options]
+   (call-function (julia-proto/kw-fn fn-handle)
                   (concat [(julia-jna/with-disabled-julia-gc
                              (kw-args->named-tuple kw-args))
                            fn-handle]
                           args)
                   options))
-  ([kw-fn-handle fn-handle args kw-args]
-   (call-function-kw kw-fn-handle fn-handle args kw-args nil))
-  ([kw-fn-handle fn-handle args]
-   (call-function-kw kw-fn-handle fn-handle args nil nil)))
+  ([fn-handle args kw-args]
+   (call-function-kw fn-handle args kw-args nil))
+  ([fn-handle args]
+   (call-function-kw fn-handle args nil nil)))
 
 
 (dtype-pp/implement-tostring-print Pointer)

@@ -11,6 +11,11 @@
   (->julia [item]))
 
 
+(defprotocol PJuliaKWFn
+  "Implementation protocol to get the julia kw fn for a given fn."
+  (kw-fn [item]))
+
+
 ;;Object default protocol implementation
 (extend-type Object
   PToJulia
