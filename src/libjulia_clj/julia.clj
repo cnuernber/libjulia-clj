@@ -114,20 +114,22 @@ user> jl-ary
 
 (defn named-tuple
   "Create a julia named tuple from a map of values."
-  [value-map]
-  (let [generic-nt-type (lookup-julia-type :jl-namedtuple-type)
-        [jl-values nt-type]
-        (julia-jna/with-disabled-julia-gc
-          (let [item-keys (apply tuple (keys value-map))
-                map-vals (vals value-map)
-                jl-values (base/jvm-args->julia map-vals)
-                item-type-tuple (apply apply-tuple-type (map julia-jna/jl_typeof jl-values))
-                nt-type (julia-jna/jl_apply_type2 generic-nt-type item-keys
-                                                  item-type-tuple)]
-            [jl-values nt-type]))]
-    (base/check-last-error)
-    ;;And now, with gc (potentially) enabled, attempt to create the struct
-    (apply struct nt-type jl-values)))
+  ([value-map]
+   (let [generic-nt-type (lookup-julia-type :jl-namedtuple-type)
+         [jl-values nt-type]
+         (julia-jna/with-disabled-julia-gc
+           (let [item-keys (apply tuple (keys value-map))
+                 map-vals (vals value-map)
+                 jl-values (base/jvm-args->julia map-vals)
+                 item-type-tuple (apply apply-tuple-type (map julia-jna/jl_typeof jl-values))
+                 nt-type (julia-jna/jl_apply_type2 generic-nt-type item-keys
+                                                   item-type-tuple)]
+             [jl-values nt-type]))]
+     (base/check-last-error)
+     ;;And now, with gc (potentially) enabled, attempt to create the struct
+     (apply struct nt-type jl-values)))
+  ([]
+   (named-tuple nil)))
 
 
 (defn cycle-gc!

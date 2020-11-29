@@ -46,6 +46,7 @@
    (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
          native-value (Pointer/nativeValue value)
          untracked-value (Pointer. native-value)
+         ;;Eventually we will turn off default logging...
          log-level (or (:log-level options) :info)]
      (when log-level
        (log/logf log-level "Rooting address  0x%016X" native-value))
@@ -223,7 +224,7 @@
       (try
         (not= 0 (long (call-function length
                                      [(raw-call-function methods [jl-obj])])))
-        (catch Throwable e false)))))
+        (catch Throwable e (println e) false)))))
 
 
 (defmethod julia-proto/julia->jvm :default
@@ -239,6 +240,8 @@
 
 
 (extend-protocol julia-proto/PToJulia
+  Boolean
+  (->julia [item] (julia-jna/jl_box_bool (if item 1 0)))
   Byte
   (->julia [item] (julia-jna/jl_box_int8 item))
   Short
@@ -260,55 +263,55 @@
   Pointer
   (->julia [item] item))
 
-(defmethod julia-proto/julia->jvm :jl-bool-type
+(defmethod julia-proto/julia->jvm :boolean
   [julia-val options]
   (if (== 0 (julia-jna/jl_unbox_bool julia-val))
     false
     true))
 
 
-(defmethod julia-proto/julia->jvm :jl-uint-8-type
+(defmethod julia-proto/julia->jvm :uint8
   [julia-val options]
   (pmath/byte->ubyte (julia-jna/jl_unbox_uint8 julia-val)))
 
-(defmethod julia-proto/julia->jvm :jl-uint-16-type
+(defmethod julia-proto/julia->jvm :uint16
   [julia-val options]
   (pmath/short->ushort (julia-jna/jl_unbox_uint16 julia-val)))
 
-(defmethod julia-proto/julia->jvm :jl-uint-32-type
+(defmethod julia-proto/julia->jvm :uint32
   [julia-val options]
   (pmath/int->uint (julia-jna/jl_unbox_uint32 julia-val)))
 
-(defmethod julia-proto/julia->jvm :jl-uint-64-type
+(defmethod julia-proto/julia->jvm :uint64
   [julia-val options]
   (julia-jna/jl_unbox_uint64 julia-val))
 
 
-(defmethod julia-proto/julia->jvm :jl-int-8-type
+(defmethod julia-proto/julia->jvm :int8
   [julia-val options]
   (julia-jna/jl_unbox_int8 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-int-16-type
+(defmethod julia-proto/julia->jvm :int16
   [julia-val options]
   (julia-jna/jl_unbox_int16 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-int-32-type
+(defmethod julia-proto/julia->jvm :int32
   [julia-val options]
   (julia-jna/jl_unbox_int32 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-int-64-type
+(defmethod julia-proto/julia->jvm :int64
   [julia-val options]
   (julia-jna/jl_unbox_int64 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-float-64-type
+(defmethod julia-proto/julia->jvm :float64
   [julia-val options]
   (julia-jna/jl_unbox_float64 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-float-32-type
+(defmethod julia-proto/julia->jvm :float32
   [julia-val options]
   (julia-jna/jl_unbox_float32 julia-val))
 
-(defmethod julia-proto/julia->jvm :jl-string-type
+(defmethod julia-proto/julia->jvm :string
   [julia-val options]
   (julia-jna/jl_string_ptr julia-val))
 

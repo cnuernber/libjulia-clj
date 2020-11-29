@@ -490,6 +490,25 @@
 (defonce julia-typemap* (atom {:typeid->typename {}
                                :typename->typeid {}}))
 
+(def jl-type->datatype
+  {:jl-bool-type :boolean
+   :jl-int-8-type :int8
+   :jl-uint-8-type :uint8
+   :jl-int-16-type :int16
+   :jl-uint-16-type :uint16
+   :jl-int-32-type :int32
+   :jl-uint-32-type :uint32
+   :jl-int-64-type :int64
+   :jl-uint-64-type :uint64
+   :jl-float-32-type :float32
+   :jl-float-64-type :float64
+   :jl-string-type :string
+   :symbol :jl-symbol-type})
+
+
+(def datatype->jl-type
+  (set/map-invert jl-type->datatype))
+
 
 (defn initialize-typemap!
   []
@@ -497,8 +516,9 @@
                         (map (comp last #(s/split % #"\s+")))
                         (filter #(.endsWith ^String % "type"))
                         (map (fn [typename]
-                               [(find-deref-julia-symbol typename)
-                                (keyword (csk/->kebab-case typename))]))
+                               (let [jl-kwd (keyword (csk/->kebab-case typename))]
+                                 [(find-deref-julia-symbol typename)
+                                  (get jl-type->datatype jl-kwd jl-kwd)])))
                         (into {}))]
     (swap! julia-typemap*
            (fn [typemap]
@@ -520,28 +540,10 @@
           :jl-function
           type-str)))))
 
-(def jl-type->datatype
-  {:jl-bool-type :boolean
-   :jl-int-8-type :int8
-   :jl-uint-8-type :uint8
-   :jl-int-16-type :int16
-   :jl-uint-16-type :uint16
-   :jl-int-32-type :int32
-   :jl-uint-32-type :uint32
-   :jl-int-64-type :int64
-   :jl-uint-64-type :uint64
-   :jl-float-32-type :float32
-   :jl-float-64-type :float64})
-
-
-(def datatype->jl-type
-  (set/map-invert jl-type->datatype))
-
 
 (defn julia-eltype->datatype
   [eltype]
-  (let [jl-type (get-in @julia-typemap* [:typeid->typename eltype])]
-    (get jl-type->datatype jl-type :object)))
+  (get-in @julia-typemap* [:typeid->typename eltype] :object))
 
 
 (defn julia-options

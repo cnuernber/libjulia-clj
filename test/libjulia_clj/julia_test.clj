@@ -17,10 +17,30 @@
     ;;with each other.
     (System/gc)
     (julia/cycle-gc!)
-    (is (= [3 4] (dtype/shape jl-ary)))
+   (is (= [3 4] (dtype/shape jl-ary)))
     (is (= [[25.0 25.0 25.0 25.0]
             [1.0 1.0 1.0 1.0]
             [1.0 1.0 1.0 1.0]]
            (mapv vec (dtt/as-tensor jl-ary)))))
+  (System/gc)
+  (julia/cycle-gc!))
+
+
+(deftest kw-manual-args-test
+  (let [add-fn (julia/eval-string "function teste(a;c = 1.0, b = 2.0)
+    a+b+c
+end")
+        kwfunc (julia/eval-string "Core.kwfunc")
+        add-kwf (kwfunc add-fn)]
+    (is (= 38 (long (add-kwf (julia/named-tuple {'b 10 'c 20})
+                             add-fn
+                             8))))
+    (is (= 19 (long (add-kwf (julia/named-tuple {'b 10})
+                             add-fn
+                             8))))
+    (is (= 11 (long (add-kwf (julia/named-tuple)
+                             add-fn
+                             8)))))
+  ;;Note that things are still rooted at this point even though let scope has closed.
   (System/gc)
   (julia/cycle-gc!))
