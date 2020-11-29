@@ -263,7 +263,7 @@
       (try
         (not= 0 (long (call-function length
                                      [(raw-call-function methods [jl-obj])])))
-        (catch Throwable e (println e) false)))))
+        (catch Throwable e false)))))
 
 
 (defn kw-fn
@@ -562,16 +562,24 @@
          ~@(->> publics
                 (map (fn [[sym {jl-symbol :symbol}]]
                        (when jl-symbol
-                         (let [sym-name (name sym)
-                               sym-rawname sym-name
-                               sym-name (.replace ^String sym-name "@" "AT")
-                               sym-name (get unsafe-name-map sym-name sym-name)
-                               docs (jl-obj->str (raw-call-function docs-fn [jl-symbol]))]
-                           `(def ~(with-meta (symbol sym-name)
-                                    {:doc docs})
-                              (julia-proto/julia->jvm
-                               (julia-jna/jl_get_function ~'module ~sym-rawname)
-                               {:unrooted? true})))))))))
+                         (try
+                           (let [sym-name (name sym)
+                                 sym-rawname sym-name
+                                 sym-name (.replace ^String sym-name "@" "AT")
+                                 sym-name (get unsafe-name-map sym-name sym-name)
+                                 docs (jl-obj->str (raw-call-function docs-fn [jl-symbol]))]
+                             `(def ~(with-meta (symbol sym-name)
+                                      {:doc docs})
+                                (try
+                                  (julia-proto/julia->jvm
+                                   (julia-jna/jl_get_function ~'module ~sym-rawname)
+                                   {:unrooted? true})
+                                  (catch Exception e#
+                                    (log/warnf e# "Julia symbol %s(%s) will be unavailable"
+                                               ~sym-name ~sym-rawname)))))
+                           (catch Exception e
+                             (log/warnf e "Julia symbol %s will unavailable" (name sym)))))))
+                (remove nil?))))
     (errors/throwf "Failed to find module: %s" module-name)))
 
 
