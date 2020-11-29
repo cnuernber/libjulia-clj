@@ -18,6 +18,7 @@
             [clojure.tools.logging :as log])
   (:import [com.sun.jna Pointer NativeLibrary]
            [java.nio.file Paths]
+           [java.util Map]
            [clojure.lang IFn Symbol Keyword])
   (:refer-clojure :exclude [struct]))
 
@@ -69,13 +70,14 @@
       (.toString)))
 
 
-(defonce base-module-functions* (atom nil))
+(defonce module-functions* (atom nil))
 
 
-(defn initialize-base-module-functions!
+(defn initialize-module-functions!
   []
-  (let [basemod (julia-jna/jl_base_module)]
-    (reset! base-module-functions*
+  (let [basemod (julia-jna/jl_base_module)
+        coremod (julia-jna/jl_core_module)]
+    (reset! module-functions*
             {:sprint (julia-jna/jl_get_function basemod "sprint")
              :showerror (julia-jna/jl_get_function basemod "showerror")
              :catch-backtrace (julia-jna/jl_get_function basemod "catch_backtrace")
@@ -83,13 +85,14 @@
              :print (julia-jna/jl_get_function basemod "print")
              :methods (julia-jna/jl_get_function basemod "methods")
              :length (julia-jna/jl_get_function basemod "length")
-             :names (julia-jna/jl_get_function basemod "names")})))
+             :names (julia-jna/jl_get_function basemod "names")
+             :kwfunc (julia-jna/jl_get_function coremod "kwfunc")})))
 
 
 (defn sprint-last-error
   ^String [exc]
   (when exc
-    (let [{:keys [sprint showerror catch-backtrace]} @base-module-functions*
+    (let [{:keys [sprint showerror catch-backtrace]} @module-functions*
           bt (julia-jna/jl_call0 catch-backtrace)]
       (-> (julia-jna/jl_call3 sprint showerror exc bt)
           (julia-proto/julia->jvm nil)))))
@@ -105,7 +108,7 @@
 (defn jl-obj->str
   ^String [jl-ptr]
   (when jl-ptr
-    (let [{:keys [sprint print]} @base-module-functions*]
+    (let [{:keys [sprint print]} @module-functions*]
       (-> (julia-jna/jl_call2 sprint print jl-ptr)
           (julia-proto/julia->jvm nil)))))
 
@@ -139,7 +142,7 @@
          (julia-jna/jl_init__threading)
          (julia-jna/initialize-typemap!)
          (initialize-julia-root-map!)
-         (initialize-base-module-functions!))
+         (initialize-module-functions!))
        (catch Throwable e
          (throw (ex-info (format "Failed to find julia library.  Is JULIA_HOME unset?  Attempted %s"
                                  julia-library-path)
@@ -154,7 +157,7 @@
 
 (defn module-symbol-names
   [module]
-  (let [names-fn (:names @base-module-functions*)
+  (let [names-fn (:names @module-functions*)
         names-ary (julia-jna/jl_call1 names-fn module)
         ary-data (native-buffer/wrap-address (Pointer/nativeValue names-ary)
                                              16 ptr-dtype :little-endian nil)
@@ -172,7 +175,7 @@
         (dtype/clone))))
 
 
-(declare call-function raw-call-function)
+(declare call-function raw-call-function call-function-kw)
 
 
 (deftype GenericJuliaObject [^Pointer handle]
@@ -188,9 +191,39 @@
 (dtype-pp/implement-tostring-print GenericJuliaObject)
 
 
+(defn args->pos-kw-args
+  "Utility function that, given a list of arguments, separates them
+  into positional and keyword arguments.  Throws an exception if the
+  keyword argument is not followed by any more arguments."
+  [arglist]
+  (loop [args arglist
+         pos-args []
+         kw-args nil
+         found-kw? false]
+    (if-not (seq args)
+      [pos-args kw-args]
+      (let [arg (first args)
+            [pos-args kw-args args found-kw?]
+            (if (keyword? arg)
+              (if-not (seq (rest args))
+                (throw (Exception.
+                        (format "Keyword arguments must be followed by another arg: %s"
+                                (str arglist))))
+                [pos-args (assoc kw-args arg (first (rest args)))
+                 (drop 2 args) true])
+              (if found-kw?
+                (throw (Exception.
+                        (format "Positional arguments are not allowed after keyword arguments: %s"
+                                arglist)))
+                [(conj pos-args (first args))
+                 kw-args
+                 (rest args) found-kw?]))]
+        (recur args pos-args kw-args found-kw?)))))
+
+
 (defmacro ^:private impl-callable-julia-object
   []
-  `(deftype ~'CallableJuliaObject [~'handle]
+  `(deftype ~'CallableJuliaObject [~'handle ~'kw-fn-handle]
      julia-proto/PToJulia
      (->julia [item] ~'handle)
      jna/PToPtr
@@ -205,10 +238,16 @@
                 (let [argsyms (->> (range idx)
                                    (mapv (fn [arg-idx]
                                            (symbol (str "arg-" arg-idx)))))]
-                  `(invoke ~(vec (concat ['this]
-                                         argsyms))
-                           (call-function ~'handle ~argsyms nil))))))
+                  `(invoke ~(vec (concat ['this] argsyms))
+                           (let [[pos-args# kw-args#] (args->pos-kw-args ~argsyms)]
+                             (if (nil? kw-args#)
+                               (call-function ~'handle ~argsyms nil)
+                               (call-function-kw ~'kw-fn-handle ~'handle pos-args# kw-args#))))))))
      (applyTo [this# argseq#]
+       (let [[pos-args# kw-args#] (args->pos-kw-args argseq#)]
+         (if (nil? kw-args#)
+           (call-function ~'handle argseq# nil)
+           (call-function-kw ~'kw-fn-handle ~'handle pos-args# kw-args#)))
        (call-function ~'handle argseq# nil))))
 
 
@@ -220,11 +259,19 @@
 (defn jl-obj-callable?
   [jl-obj]
   (when jl-obj
-    (let [{:keys [methods length]} @base-module-functions*]
+    (let [{:keys [methods length]} @module-functions*]
       (try
         (not= 0 (long (call-function length
                                      [(raw-call-function methods [jl-obj])])))
         (catch Throwable e (println e) false)))))
+
+
+(defn kw-fn
+  ([jl-fn options]
+   (let [{:keys [kwfunc]} @module-functions*]
+     (call-function kwfunc [jl-fn] options)))
+  ([jl-fn]
+   (kw-fn jl-fn nil)))
 
 
 (defmethod julia-proto/julia->jvm :default
@@ -235,7 +282,7 @@
                 (== 0 (julia-jna/jl_gc_is_enabled)))
     (root-ptr! julia-val))
   (if (jl-obj-callable? julia-val)
-    (CallableJuliaObject. julia-val)
+    (CallableJuliaObject. julia-val (kw-fn julia-val {:unrooted? true}))
     (GenericJuliaObject. julia-val)))
 
 
@@ -323,6 +370,31 @@
            (julia-jna/jl_nothing)) args))
 
 
+(defn lookup-julia-type
+  "Lookup a julia type from a clojure type keyword."
+  [clj-type-kwd]
+  (if-let [retval (get-in @julia-jna/julia-typemap* [:typename->typeid clj-type-kwd])]
+    (julia-proto/julia->jvm retval {:unrooted? true})
+    (errors/throwf "Failed to find julia type %s" clj-type-kwd)))
+
+
+(defn jvm-args->julia-types
+  [args]
+  (mapv #(if %
+           (if (keyword? %) (lookup-julia-type %)
+               (julia-proto/->julia %))
+           (julia-jna/jl_nothing))
+        args))
+
+
+(defn jvm-args->julia-symbols
+  [args]
+  (mapv #(cond (string? %) (julia-jna/jl_symbol %)
+               (or (keyword? %) (symbol? %)) (julia-proto/->julia %)
+               :else (errors/throwf "%s is not convertible to a julia symbol" %))
+        args))
+
+
 (defn raw-call-function
   "Call the function.  We disable the Julia GC when marshalling arguments but
   the GC is enabled for the actual julia function call.  The result is returned
@@ -359,11 +431,10 @@
   ([fn-handle args]
    (call-function fn-handle args nil)))
 
-
 (defn apply-tuple-type
   ^Pointer [args & [options]]
   (resource/stack-resource-context
-   (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+   (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
          n-args (count args)
          ptr-buf (dtype/make-container :native-heap ptr-dtype
                                        {:resource-type :stack}
@@ -379,7 +450,7 @@
 (defn apply-type
   ^Pointer [jl-type args]
   (resource/stack-resource-context
-   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
          retval
          (case (count args)
            1 (julia-jna/jl_apply_type1 jl-type (first args))
@@ -412,7 +483,57 @@
      (julia-proto/julia->jvm retval nil))))
 
 
+(defn tuple
+  "Create a julia tuple from a set of arguments.  The tuple type will be the
+  same datatype as the argument types."
+  [args]
+  (let [[jl-args tuple-type]
+        (julia-jna/with-disabled-julia-gc
+          (let [jl-args (jvm-args->julia args)]
+            [jl-args
+             (apply-tuple-type (map julia-jna/jl_typeof jl-args))]))]
+    (struct tuple-type jl-args)))
 
+
+(defn named-tuple
+  "Create a julia named tuple from a map of values.  The keys of the map must be
+  keywords or symbols.  A new named tuple type will be created and instantiated."
+  ([value-map]
+   (let [generic-nt-type (lookup-julia-type :jl-namedtuple-type)
+         [jl-values nt-type]
+         (julia-jna/with-disabled-julia-gc
+           (let [item-keys (tuple (jvm-args->julia-symbols (keys value-map)))
+                 map-vals (vals value-map)
+                 jl-values (jvm-args->julia map-vals)
+                 item-type-tuple (apply-tuple-type (map julia-jna/jl_typeof jl-values))
+                 nt-type (apply-type generic-nt-type [item-keys item-type-tuple])]
+             [jl-values nt-type]))]
+     (check-last-error)
+     ;;And now, with gc (potentially) enabled, attempt to create the struct
+     (struct nt-type jl-values)))
+  ([]
+   (named-tuple nil)))
+
+
+(defn kw-args->named-tuple
+  [kw-args]
+  (if (instance? Map kw-args)
+    (named-tuple kw-args)
+    (julia-proto/->julia kw-args)))
+
+
+(defn call-function-kw
+  ([kw-fn-handle fn-handle args kw-args options]
+   (call-function kw-fn-handle
+                  (concat [(julia-jna/with-disabled-julia-gc
+                             (kw-args->named-tuple kw-args))
+                           fn-handle]
+                          args)
+                  options))
+  ([kw-fn-handle fn-handle args kw-args]
+   (call-function-kw kw-fn-handle fn-handle args kw-args nil))
+  ([kw-fn-handle fn-handle args]
+   (call-function-kw kw-fn-handle fn-handle args nil nil)))
 
 
 (dtype-pp/implement-tostring-print Pointer)
@@ -487,8 +608,7 @@
   dtype-proto/PShape
   (shape [this]
     (let [rank (julia-jna/jl_array_rank handle)]
-      (mapv #(julia-jna/jl_array_size handle %)
-            (range rank))))
+      (mapv #(julia-jna/jl_array_size handle %) (range rank))))
   dtype-proto/PECount
   (ecount [this]
     (long (apply * (dtype-proto/shape this))))

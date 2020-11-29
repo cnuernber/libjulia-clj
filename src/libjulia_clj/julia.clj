@@ -51,7 +51,16 @@ user> jl-ary
   (:refer-clojure :exclude [struct]))
 
 
-(export-symbols libjulia-clj.impl.base initialize!)
+(export-symbols libjulia-clj.impl.base
+                initialize!
+                lookup-julia-type
+                apply-tuple-type
+                apply-type
+                struct
+                tuple
+                named-tuple
+                call-function
+                call-function-kw)
 
 
 (defn eval-string
@@ -66,17 +75,6 @@ user> jl-ary
    (eval-string str-data nil)))
 
 
-(defn apply-tuple-type
-  "Make a julia tuple-type from some values."
-  [& args]
-  (base/apply-tuple-type args))
-
-
-(defn apply-type
-  [jl-type & args]
-  (base/apply-type jl-type args))
-
-
 (defn typeof
   "Get the julia type of an item."
   [item]
@@ -86,50 +84,24 @@ user> jl-ary
       (julia-proto/julia->jvm retval nil))))
 
 
+(defn apply-tuple-type
+  [& args]
+  (base/apply-tuple-type args))
+
+
+(defn apply-type
+  [& args]
+  (base/apply-type args))
+
+
 (defn struct
-  "Create a julia struct type from some values"
-  [jl-dtype & args]
-  (base/struct jl-dtype args))
+  [struct-type & args]
+  (base/struct struct-type args))
 
 
 (defn tuple
-  "Create a julia tuple from a set of arguments.  The tuple type will be the
-  same datatype as the argument types."
   [& args]
-  (let [[jl-args tuple-type]
-        (julia-jna/with-disabled-julia-gc
-          (let [jl-args (base/jvm-args->julia args)]
-            [jl-args
-             (base/apply-tuple-type (map julia-jna/jl_typeof jl-args))]))]
-    (apply struct tuple-type jl-args)))
-
-
-(defn lookup-julia-type
-  "Lookup a julia type from a clojure type keyword."
-  [clj-type-kwd]
-  (if-let [retval (get-in @julia-jna/julia-typemap* [:typename->typeid clj-type-kwd])]
-    (julia-proto/julia->jvm retval {:unrooted? true})
-    (errors/throwf "Failed to find julia type %s" clj-type-kwd)))
-
-
-(defn named-tuple
-  "Create a julia named tuple from a map of values."
-  ([value-map]
-   (let [generic-nt-type (lookup-julia-type :jl-namedtuple-type)
-         [jl-values nt-type]
-         (julia-jna/with-disabled-julia-gc
-           (let [item-keys (apply tuple (keys value-map))
-                 map-vals (vals value-map)
-                 jl-values (base/jvm-args->julia map-vals)
-                 item-type-tuple (apply apply-tuple-type (map julia-jna/jl_typeof jl-values))
-                 nt-type (julia-jna/jl_apply_type2 generic-nt-type item-keys
-                                                   item-type-tuple)]
-             [jl-values nt-type]))]
-     (base/check-last-error)
-     ;;And now, with gc (potentially) enabled, attempt to create the struct
-     (apply struct nt-type jl-values)))
-  ([]
-   (named-tuple nil)))
+  (base/tuple args))
 
 
 (defn cycle-gc!

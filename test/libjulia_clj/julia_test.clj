@@ -32,15 +32,19 @@
 end")
         kwfunc (julia/eval-string "Core.kwfunc")
         add-kwf (kwfunc add-fn)]
-    (is (= 38 (long (add-kwf (julia/named-tuple {'b 10 'c 20})
-                             add-fn
-                             8))))
-    (is (= 19 (long (add-kwf (julia/named-tuple {'b 10})
-                             add-fn
-                             8))))
-    (is (= 11 (long (add-kwf (julia/named-tuple)
-                             add-fn
-                             8)))))
+    (is (= 38.0 (add-kwf (julia/named-tuple {'b 10 'c 20})
+                         add-fn
+                         8.0)))
+    (is (= 19.0 (add-kwf (julia/named-tuple {'b 10})
+                       add-fn
+                       8.0)))
+    (is (= 11.0 (add-kwf (julia/named-tuple)
+                         add-fn
+                         8.0)))
+
+    (is (= 38.0 (add-fn 8.0 :b 10 :c 20)))
+    (is (= 19.0 (add-fn 8 :b 10)))
+    (is (= 11.0 (add-fn 8))))
   ;;Note that things are still rooted at this point even though let scope has closed.
   (System/gc)
   (julia/cycle-gc!))
