@@ -18,7 +18,8 @@
             [clojure.tools.logging :as log])
   (:import [com.sun.jna Pointer NativeLibrary]
            [java.nio.file Paths]
-           [clojure.lang IFn Symbol Keyword]))
+           [clojure.lang IFn Symbol Keyword])
+  (:refer-clojure :exclude [struct]))
 
 
 (defonce jvm-julia-roots* (atom nil))
@@ -227,7 +228,10 @@
 
 (defmethod julia-proto/julia->jvm :default
   [julia-val options]
-  (when-not (:unrooted? options)
+  ;;Do not root when someone asks us not to or when
+  ;;we have explicitly disabled the julia gc.
+  (when-not (or (:unrooted? options)
+                (== 0 (julia-jna/jl_gc_is_enabled)))
     (root-ptr! julia-val))
   (if (jl-obj-callable? julia-val)
     (CallableJuliaObject. julia-val)
@@ -353,8 +357,8 @@
    (call-function fn-handle args nil)))
 
 
-(defn make-tuple
-  ^Pointer [& args]
+(defn apply-tuple-type
+  ^Pointer [args & [options]]
   (resource/stack-resource-context
    (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
          n-args (count args)
@@ -366,7 +370,46 @@
                                              jl-args))
          retval (julia-jna/jl_apply_tuple_type_v ptr-buf n-args)]
      (check-last-error)
+     (julia-proto/julia->jvm retval options))))
+
+
+(defn apply-type
+  ^Pointer [jl-type args]
+  (resource/stack-resource-context
+   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+         retval
+         (case (count args)
+           1 (julia-jna/jl_apply_type1 jl-type (first args))
+           2 (julia-jna/jl_apply_type2 jl-type (first args) (second args))
+           (let [n-args (count args)
+                 ptr-buf (dtype/make-container :native-heap ptr-dtype
+                                               {:resource-type :stack}
+                                               (mapv #(if %
+                                                        (Pointer/nativeValue ^Pointer %)
+                                                        0)
+                                                     args))]
+             (julia-jna/jl_apply_type jl-type ptr-buf n-args)))]
+     (check-last-error)
      (julia-proto/julia->jvm retval nil))))
+
+
+(defn struct
+  ^Pointer [jl-type args]
+  (resource/stack-resource-context
+   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+         n-args (count args)
+         ptr-buf (dtype/make-container :native-heap ptr-dtype
+                                       {:resource-type :stack}
+                                       (mapv #(if %
+                                                (Pointer/nativeValue ^Pointer %)
+                                                0)
+                                             args))
+         retval (julia-jna/jl_new_structv jl-type ptr-buf n-args)]
+     (check-last-error)
+     (julia-proto/julia->jvm retval nil))))
+
+
+
 
 
 (dtype-pp/implement-tostring-print Pointer)

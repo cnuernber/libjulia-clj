@@ -388,6 +388,38 @@
   [ary jna/ensure-ptr]
   [d jna/size-t])
 
+
+(def-julia-fn jl_apply_type
+  "Apply a julia type"
+  Pointer
+  [tc jl_value_t]
+  [params jna/ensure-ptr]
+  [n jna/size-t])
+
+
+(def-julia-fn jl_apply_type1
+  "Apply a julia type to 1 argument"
+  Pointer
+  [tc jl_value_t]
+  [p1 jl_value_t])
+
+
+(def-julia-fn jl_apply_type2
+  "Apply julia type to 2 arguments"
+  Pointer
+  [tc jl_value_t]
+  [p1 jl_value_t]
+  [p2 jl_value_t])
+
+
+(def-julia-fn jl_new_structv
+  "Create a new julia struct from some values"
+  Pointer
+  [datatype jl_value_t]
+  [args jna/ensure-ptr]
+  [n-args int])
+
+
 (def-julia-fn jl_gc_collect
   "Force a GC run"
   nil)
