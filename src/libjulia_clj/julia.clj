@@ -84,22 +84,23 @@ user> jl-ary
       (julia-proto/julia->jvm retval nil))))
 
 
-(defn apply-tuple-type
+(defn ^{:doc (:doc (meta #'base/apply-tuple-type))}
+  apply-tuple-type
   [& args]
   (base/apply-tuple-type args))
 
 
-(defn apply-type
+(defn ^{:doc (:doc (meta #'base/apply-type))} apply-type
   [& args]
   (base/apply-type args))
 
 
-(defn struct
+(defn ^{:doc (:doc (meta #'base/struct))} struct
   [struct-type & args]
   (base/struct struct-type args))
 
 
-(defn tuple
+(defn ^{:doc (:doc (meta #'base/tuple))} tuple
   [& args]
   (base/tuple args))
 
