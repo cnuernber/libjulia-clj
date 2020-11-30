@@ -14,10 +14,15 @@ julia:
 env:
   - JULIA_COPY_STACKS=0
   - JULIA_COPY_STACKS=1
+  - LEIN_PATH="$TRAVIS_BUILD_DIR/lein"
   
 before_install:
-  - wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein && mv lein /usr/bin
-  - echo $(lein)
+  - wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
+  - echo $($LEIN_PATH)
+
+
+script:
+  - $LEIN_PATH test
 
 notifications:
   email: false
