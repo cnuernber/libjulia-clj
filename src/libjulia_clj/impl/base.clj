@@ -151,7 +151,7 @@
    (let [julia-library-path (cond
                               (not (nil? julia-library-path))
                               julia-library-path
-                              (not (nil? (System/getenv "JULIA_HOME")))
+                              (not-empty (System/getenv "JULIA_HOME"))
                               (combine-paths (System/getenv "JULIA_HOME") "lib" (System/mapLibraryName "julia"))
                               :else
                               "julia")]
