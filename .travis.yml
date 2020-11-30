@@ -21,7 +21,7 @@ before_install:
   - export JULIA_HOME=$TRAVIS_HOME/julia
   - echo $TRAVIS_OS_NAME
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then choco install jdk8; fi
-  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export PATH=$PATH:"/c/Program Files/Java/jdk1.8.0_221/bin"; fi
+  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then refreshenv; fi
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then java -version; fi
   - echo $($TRAVIS_BUILD_DIR/lein)
 
