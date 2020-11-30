@@ -35,6 +35,10 @@ script:
 notifications:
   email: false
 
+jobs:
+  allow_failures:
+    - os: windows
+
 cache:
   directories:
   - "$HOME/.m2"
