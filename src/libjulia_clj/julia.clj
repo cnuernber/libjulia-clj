@@ -46,6 +46,8 @@ user> jl-ary
             [libjulia-clj.impl.protocols :as julia-proto]
             [libjulia-clj.impl.jna :as julia-jna]
             [libjulia-clj.impl.gc :as julia-gc]
+            ;;pure language extensions for now.
+            [libjulia-clj.impl.collections]
             [tech.v3.datatype.export-symbols :refer [export-symbols]]
             [tech.v3.datatype.errors :as errors])
   (:refer-clojure :exclude [struct]))
@@ -91,8 +93,8 @@ user> jl-ary
 
 
 (defn ^{:doc (:doc (meta #'base/apply-type))} apply-type
-  [& args]
-  (base/apply-type args))
+  [jl-type & args]
+  (base/apply-type jl-type args))
 
 
 (defn ^{:doc (:doc (meta #'base/struct))} struct

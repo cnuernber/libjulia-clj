@@ -543,7 +543,9 @@
 
 (defn julia-eltype->datatype
   [eltype]
-  (get-in @julia-typemap* [:typeid->typename eltype] :object))
+  (get-in @julia-typemap* [:typeid->typename
+                           (jna/->ptr-backing-store eltype)]
+          :object))
 
 
 (defn julia-options

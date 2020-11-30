@@ -104,7 +104,8 @@
              :append! (julia-jna/jl_get_function basemod "append!")
              :delete! (julia-jna/jl_get_function basemod "delete!")
              :iterate (julia-jna/jl_get_function basemod "iterate")
-             :pairs (julia-jna/jl_get_function basemod "pairs")})))
+             :pairs (julia-jna/jl_get_function basemod "pairs")
+             :eltype (julia-jna/jl_get_function basemod "eltype")})))
 
 
 (defn module-fn

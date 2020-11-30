@@ -1,10 +1,13 @@
 (ns libjulia-clj.impl.collections
   (:require [libjulia-clj.impl.base :as base]
             [libjulia-clj.impl.protocols :as julia-proto]
+            [libjulia-clj.impl.jna :as julia-jna]
+            [tech.v3.datatype.pprint :as dtype-pp]
             [tech.v3.jna :as jna])
   (:import [java.util Map Iterator]
            [clojure.lang ILookup ISeq MapEntry]
-           [com.sun.jna Pointer]))
+           [com.sun.jna Pointer]
+           [tech.v3.datatype ObjectReader]))
 
 
 (deftype JuliaDict [^Pointer handle]
@@ -43,7 +46,37 @@
     (base/jl-obj->str handle)))
 
 
+(dtype-pp/implement-tostring-print JuliaDict)
+
+
 (defmethod julia-proto/julia->jvm "Dict"
   [jl-ptr options]
   (base/root-ptr! jl-ptr options)
   (JuliaDict. jl-ptr))
+
+
+(deftype JuliaTuple [^Pointer handle]
+  julia-proto/PToJulia
+  (->julia [item] handle)
+  jna/PToPtr
+  (is-jna-ptr-convertible? [this] true)
+  (->ptr-backing-store [this] handle)
+  ObjectReader
+  (elemwiseDatatype [this]
+    (-> (base/module-fn :eltype handle)
+        (julia-jna/julia-eltype->datatype)))
+  (lsize [this] (long (base/module-fn :length handle)))
+  (readObject [this idx]
+    (base/module-fn :getindex handle (int (inc idx))))
+  Object
+  (toString [this]
+    (base/jl-obj->str handle)))
+
+
+(dtype-pp/implement-tostring-print JuliaTuple)
+
+
+(defmethod julia-proto/julia->jvm "Tuple"
+  [jl-ptr options]
+  (base/root-ptr! jl-ptr options)
+  (JuliaTuple. jl-ptr))
