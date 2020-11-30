@@ -10,11 +10,11 @@ dist: focal
 
 julia:
   - 1.5.3
-  
+
 env:
   - JULIA_COPY_STACKS=0
   - JULIA_COPY_STACKS=1
-  
+
 before_install:
   - wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
   - chmod a+x lein
@@ -23,7 +23,7 @@ before_install:
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then choco install jdk8; fi
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export PATH=$PATH:"/C/Program Files/Java/jdk1.8.0_211/bin"; fi
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then java -version; fi
-  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export JULIA_HOME="c/julia/"; fi
+  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export JULIA_HOME="/c/julia/"; fi
   - echo $($TRAVIS_BUILD_DIR/lein)
 
 
