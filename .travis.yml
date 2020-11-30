@@ -4,11 +4,15 @@ os:
   - linux
   - osx
   - windows
-  
+
 dist: focal
 
-jdk:
-  - openjdk8
+# Windows needs this, linux and osx do not
+addons:
+  apt:
+    packages:
+    - openjdk-8-jre
+  
 
 julia:
   - 1.5.3
