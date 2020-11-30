@@ -138,6 +138,12 @@
           (julia-proto/julia->jvm nil)))))
 
 
+(defn windows-os?
+  []
+  (.contains (.toLowerCase (System/getProperty "os.name"))
+             "windows"))
+
+
 (defn initialize!
   "Initialize julia optionally providing an explicit path which will override
   the julia library search mechanism.
@@ -151,10 +157,17 @@
    (let [julia-library-path (cond
                               (not (nil? julia-library-path))
                               julia-library-path
+                              (not-empty (System/getenv "JULIA_LIBRARY_PATH"))
+                              (System/getenv "JULIA_LIBRARY_PATH")
                               (not-empty (System/getenv "JULIA_HOME"))
-                              (combine-paths (System/getenv "JULIA_HOME") "lib" (System/mapLibraryName "julia"))
+                              (apply combine-paths (System/getenv "JULIA_HOME")
+                                     (if (windows-os?)
+                                       ["bin" (System/mapLibraryName "libjulia")]
+                                       ["lib" (System/mapLibraryName "julia")]))
                               :else
-                              "julia")]
+                              (if windows-os?
+                                "libjulia"
+                                "julia"))]
      (try
        (log/infof "Attempting to initialize Julia at %s" julia-library-path)
        (jna-base/load-library julia-library-path)
