@@ -2,6 +2,8 @@ language: julia
 
 os:
   - linux
+  - osx
+  - windows
   
 dist: focal
 
@@ -27,3 +29,7 @@ script:
 
 notifications:
   email: false
+
+cache:
+  directories:
+  - "$HOME/.m2"
