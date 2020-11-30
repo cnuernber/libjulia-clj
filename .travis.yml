@@ -14,13 +14,12 @@ julia:
 env:
   - JULIA_COPY_STACKS=0
   - JULIA_COPY_STACKS=1
-
-    - LEIN_PATH="$TRAVIS_BUILD_DIR/lein"
   
 before_install:
   - wget https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
   - chmod a+x lein
   - echo $($TRAVIS_BUILD_DIR/lein)
+  - export JULIA_HOME=$TRAVIS_HOME/julia
 
 
 script:
