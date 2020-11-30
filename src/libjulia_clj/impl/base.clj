@@ -18,12 +18,15 @@
             [clojure.tools.logging :as log])
   (:import [com.sun.jna Pointer NativeLibrary]
            [java.nio.file Paths]
-           [java.util Map]
+           [java.util Map Iterator NoSuchElementException]
            [clojure.lang IFn Symbol Keyword])
   (:refer-clojure :exclude [struct]))
 
 
 (defonce jvm-julia-roots* (atom nil))
+
+
+(declare call-function raw-call-function call-function-kw)
 
 
 (defn initialize-julia-root-map!
@@ -44,20 +47,22 @@
   "Root a pointer and set a GC hook that will unroot it when the time comes.
   Defaults to :auto track type"
   ([^Pointer value options]
-   (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
-         native-value (Pointer/nativeValue value)
-         untracked-value (Pointer. native-value)
-         ;;Eventually we will turn off default logging...
-         log-level (or (:log-level options) :info)]
-     (when log-level
-       (log/logf log-level "Rooting address  0x%016X" native-value))
-     (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)
-     (gc/track value (fn []
-                       (when log-level
-                         (log/logf log-level
-                                   "Unrooting address 0x%016X"
-                                   native-value))
-                       (julia-jna/jl_call2 delete! jvm-refs untracked-value)))))
+   (when-not (or (:unrooted? options)
+                 (== 0 (julia-jna/jl_gc_is_enabled)))
+     (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
+           native-value (Pointer/nativeValue value)
+           untracked-value (Pointer. native-value)
+           ;;Eventually we will turn off default logging...
+           log-level (or (:log-level options) :info)]
+       (when log-level
+         (log/logf log-level "Rooting address  0x%016X" native-value))
+       (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)
+       (gc/track value (fn []
+                         (when log-level
+                           (log/logf log-level
+                                     "Unrooting address 0x%016X"
+                                     native-value))
+                         (julia-jna/jl_call2 delete! jvm-refs untracked-value))))))
   ([value]
    (root-ptr! value nil)))
 
@@ -86,7 +91,27 @@
              :methods (julia-jna/jl_get_function basemod "methods")
              :length (julia-jna/jl_get_function basemod "length")
              :names (julia-jna/jl_get_function basemod "names")
-             :kwfunc (julia-jna/jl_get_function coremod "kwfunc")})))
+             :kwfunc (julia-jna/jl_get_function coremod "kwfunc")
+             :isempty (julia-jna/jl_get_function basemod "isempty")
+             :setindex! (julia-jna/jl_get_function basemod "setindex!")
+             :getindex (julia-jna/jl_get_function basemod "getindex")
+             :fieldnames (julia-jna/jl_get_function basemod "fieldnames")
+             :getfield (julia-jna/jl_get_function basemod "getfield")
+             :keys (julia-jna/jl_get_function basemod "keys")
+             :values (julia-jna/jl_get_function basemod "values")
+             :haskey (julia-jna/jl_get_function basemod "haskey")
+             :get (julia-jna/jl_get_function basemod "get")
+             :append! (julia-jna/jl_get_function basemod "append!")
+             :delete! (julia-jna/jl_get_function basemod "delete!")
+             :iterate (julia-jna/jl_get_function basemod "iterate")
+             :pairs (julia-jna/jl_get_function basemod "pairs")})))
+
+
+(defn module-fn
+  [fn-name & args]
+  (if-let [fn-val (get @module-functions* fn-name)]
+    (call-function fn-val args)
+    (errors/throwf "Failed to find module function %s" fn-name)))
 
 
 (defn sprint-last-error
@@ -173,9 +198,6 @@
                           (julia-jna/jl_symbol_name)))
                     :string data)
         (dtype/clone))))
-
-
-(declare call-function raw-call-function call-function-kw)
 
 
 (deftype GenericJuliaObject [^Pointer handle]
@@ -286,9 +308,7 @@
   [julia-val options]
   ;;Do not root when someone asks us not to or when
   ;;we have explicitly disabled the julia gc.
-  (when-not (or (:unrooted? options)
-                (== 0 (julia-jna/jl_gc_is_enabled)))
-    (root-ptr! julia-val))
+  (root-ptr! julia-val options)
   (if (jl-obj-callable? julia-val)
     (CallableJuliaObject. julia-val (kw-fn julia-val {:unrooted? true}))
     (GenericJuliaObject. julia-val)))
@@ -369,6 +389,10 @@
 (defmethod julia-proto/julia->jvm :string
   [julia-val options]
   (julia-jna/jl_string_ptr julia-val))
+
+(defmethod julia-proto/julia->jvm :jl-nothing-type
+  [julia-val options]
+  nil)
 
 
 (defn jvm-args->julia
@@ -663,6 +687,38 @@
 
 (defmethod julia-proto/julia->jvm "Array"
   [jl-ptr options]
-  (when-not (:unrooted? options)
-    (root-ptr! jl-ptr))
+  (root-ptr! jl-ptr options)
   (JuliaArray. jl-ptr))
+
+
+(deftype JLIterator [iter
+                     ^:unsynchronized-mutable iter-state
+                     ^:unsynchronized-mutable last-value]
+  Iterator
+  (hasNext [this]
+    (boolean (not (nil? iter-state))))
+  (next [this]
+    (when-not iter-state
+      (throw (NoSuchElementException.)))
+    (let [next-tuple (module-fn :iterate iter iter-state)
+          retval last-value]
+      (if next-tuple
+        (do
+          (set! last-value (module-fn :getindex next-tuple 1))
+          (set! iter-state (module-fn :getindex next-tuple 2)))
+        (do
+          (set! last-value nil)
+          (set! iter-state nil)))
+      retval)))
+
+
+(defn julia-obj->iterable
+  ^Iterable [jl-obj]
+  (reify Iterable
+    (iterator [this]
+      (let [first-tuple (module-fn :iterate jl-obj)]
+        (if first-tuple
+          (JLIterator. jl-obj
+                       (module-fn :getindex first-tuple 2)
+                       (module-fn :getindex first-tuple 1))
+          (JLIterator. jl-obj nil nil))))))
