@@ -23,11 +23,6 @@ before_install:
   - if [ "$TRAVIS_OS_NAME" = "windows"]; then choco install jdk8; fi
   - if [ "$TRAVIS_OS_NAME" = "windows"]; then export PATH=$PATH:"/c/Program Files/Java/jdk1.8.0_191/bin"; fi
   - if [ "$TRAVIS_OS_NAME" = "windows"]; then java -version; fi
-  
-- export 
-
-- java -version
-
 
 script:
   - $TRAVIS_BUILD_DIR/lein test
