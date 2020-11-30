@@ -7,12 +7,6 @@ os:
 
 dist: focal
 
-# Windows needs this, linux and osx do not
-addons:
-  apt:
-    packages:
-    - openjdk-8-jre
-  
 
 julia:
   - 1.5.3
@@ -26,6 +20,13 @@ before_install:
   - chmod a+x lein
   - echo $($TRAVIS_BUILD_DIR/lein)
   - export JULIA_HOME=$TRAVIS_HOME/julia
+  - if [ "$TRAVIS_OS_NAME" = "windows"]; then choco install jdk8; fi
+  - if [ "$TRAVIS_OS_NAME" = "windows"]; then export PATH=$PATH:"/c/Program Files/Java/jdk1.8.0_191/bin"; fi
+  - if [ "$TRAVIS_OS_NAME" = "windows"]; then java -version; fi
+  
+- export 
+
+- java -version
 
 
 script:
