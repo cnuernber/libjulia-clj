@@ -1,10 +1,10 @@
-(defproject cnuernber/julia-clj "0.1.0-SNAPSHOT"
-  :description "Julia bindings for Clojure."
+(defproject cnuernber/julia-clj "0.01"
+  :description "Experimental Julia bindings for Clojure."
   :url "https://github.com/cnuernber/libjulia-clj"
   :license {:name "EPL-2.0"
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.1"]
-                 [cnuernber/dtype-next "6.00-beta-8"]
+                 [cnuernber/dtype-next "6.00-beta-9"]
                  [techascent/tech.jna "4.05"]]
   :java-source-paths ["java"]
   ;;sane logging please
