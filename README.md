@@ -5,6 +5,7 @@
 
 
 * [API docs](https://cnuernber.github.io/libjulia-clj/)
+* [NextJournal Entry](https://nextjournal.com/cnuernber/small-byte-of-julia/)
 
 ## Usage
 
