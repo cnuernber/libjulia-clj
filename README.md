@@ -94,16 +94,15 @@ user> (def fractal-fn (julia/eval-string julia-code))
 #'user/fractal-fn
 user> (defn jl-fractal
         []
-
         (-> (fractal-fn i1 i2 d zoom-factor fract-width fract-height)
-        (dtt/ensure-tensor)
-        ;;Julia is column-major so our image comes out widthxheight
-        ;;datatype is row major.
-        (dtt/transpose [1 0])
-        ;;The tensor library *knows* the original was transposed so transposing the result
-        ;;back into row-major means the memory can be read in order and thus
-        ;;the copy operation below is one large memcopy into a jvm byte array.
-        (dtype/copy! (bufimg/new-image fract-height fract-width :byte-gray))))
+            (dtt/ensure-tensor)
+            ;;Julia is column-major so our image comes out widthxheight
+            ;;datatype is row major.
+            (dtt/transpose [1 0])
+            ;;The tensor library *knows* the original was transposed so transposing the result
+            ;;back into row-major means the memory can be read in order and thus
+            ;;the copy operation below is one large memcopy into a jvm byte array.
+            (dtype/copy! (bufimg/new-image fract-height fract-width :byte-gray))))
 #'user/jl-fractal
 user> (jl-fractal)
 13:38:24.454 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71C3402E0
