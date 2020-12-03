@@ -59,6 +59,15 @@ user> (import '[org.apache.commons.math3.complex Complex])
 org.apache.commons.math3.complex.Complex
 user> (require '[tech.v3.libs.buffered-image :as bufimg])
 nil
+user> (require '[tech.v3.datatype :as dtype])
+nil
+user> (def fract-width 1920)
+(def fract-height 1080)
+(def i1 0.31)
+(def i2 -0.6)
+(def d 11)
+(def zoom-factor 0.2)
+#'user/fract-width#'user/fract-height#'user/i1#'user/i2#'user/d#'user/zoom-factor
 user> (def julia-code
   "function juliaSet(i1,i2,d,zoomFactor,imgWidth,imgHeight)
     # Allocating a widthxheight matrix as our Clojure client is row-major
@@ -83,15 +92,6 @@ end")
 user> (def fractal-fn (julia/eval-string julia-code))
 13:36:43.745 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71B470030
 #'user/fractal-fn
-user> (def fract-width 1920)
-(def fract-height 1080)
-(def i1 0.31)
-(def i2 -0.6)
-(def d 11)
-(def zoom-factor 0.2)
-#'user/fract-width#'user/fract-height#'user/i1#'user/i2#'user/d#'user/zoom-factor
-user> (require '[tech.v3.datatype :as dtype])
-nil
 user> (defn jl-fractal
         []
 
