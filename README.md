@@ -26,10 +26,8 @@ Nov 26, 2020 12:26:01 PM clojure.tools.logging$eval8218$fn__8221 invoke
 INFO: Library /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so found at [:system "/home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so"]
 nil
 user> (def ones-fn (julia/eval-string "Base.ones"))
-13:33:12.761 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA724A39E40
 #'user/ones-fn
 user> (ones-fn 3 4)
-13:33:16.814 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71B29F2F0
 [1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0]
 user> (def julia-ary *1)
 #'user/julia-ary
@@ -90,7 +88,6 @@ user> (def julia-code
 end")
 #'user/julia-code
 user> (def fractal-fn (julia/eval-string julia-code))
-13:36:43.745 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71B470030
 #'user/fractal-fn
 user> (defn jl-fractal
         []
@@ -105,14 +102,16 @@ user> (defn jl-fractal
             (dtype/copy! (bufimg/new-image fract-height fract-width :byte-gray))))
 #'user/jl-fractal
 user> (jl-fractal)
-13:38:24.454 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71C3402E0
 #object[java.awt.image.BufferedImage 0x4d63b28f "BufferedImage@4d63b28f: type = 10 ColorModel: #pixelBits = 8 numComponents = 1 color space = java.awt.color.ICC_ColorSpace@2703464d transparency = 1 has alpha = false isAlphaPre = false ByteInterleavedRaster: width = 1920 height = 1080 #numDataElements 1 dataOff[0] = 0"]
 
 user> (time (def ignored (jl-fractal)))
-13:38:43.435 [nRepl-session-a133a501-7629-4ec0-860f-3f3b008f41e4] INFO libjulia-clj.impl.base - Rooting address  0x00007FA71C4D81F0
 "Elapsed time: 31.487044 msecs"
 #'user/ignored
+user> (bufimg/save! (jl-fractal) "julia.png")
+true
 ```
+
+![topics/images/julia.png]
 
 
 ## License
