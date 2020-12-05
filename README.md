@@ -52,9 +52,6 @@ user> julia-ary
 ## Something Fun
 
 ```clojure
-
-user> (import '[org.apache.commons.math3.complex Complex])
-org.apache.commons.math3.complex.Complex
 user> (require '[tech.v3.libs.buffered-image :as bufimg])
 nil
 user> (require '[tech.v3.datatype :as dtype])
@@ -103,7 +100,7 @@ user> (defn jl-fractal
 #'user/jl-fractal
 user> (jl-fractal)
 #object[java.awt.image.BufferedImage 0x4d63b28f "BufferedImage@4d63b28f: type = 10 ColorModel: #pixelBits = 8 numComponents = 1 color space = java.awt.color.ICC_ColorSpace@2703464d transparency = 1 has alpha = false isAlphaPre = false ByteInterleavedRaster: width = 1920 height = 1080 #numDataElements 1 dataOff[0] = 0"]
-
+;; Roughly 1920*1080*11*3, or 68428800 complex number operations
 user> (time (def ignored (jl-fractal)))
 "Elapsed time: 31.487044 msecs"
 #'user/ignored
