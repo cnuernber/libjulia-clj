@@ -111,7 +111,7 @@ user> (bufimg/save! (jl-fractal) "julia.png")
 true
 ```
 
-![topics/images/julia.png]
+![julia-img](topics/images/julia.png)
 
 
 ## License
