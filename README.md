@@ -17,14 +17,15 @@ wget https://julialang-s3.julialang.org/bin/linux/x64/1.5/julia-1.5.3-linux-x86_
 export JULIA_HOME=$(pwd)/julia-1.5.3
 ```
 
-In your repl, load the julia base namespace (it calls initialize! automatically):
+In your repl, load the julia base namespace and initialize the system.
 
 ```clojure
-user> (require '[libjulia-clj.modules.Base :as Base])
-;;Long pause, loading metadata for all of Base takes a while.  Perhaps better to write a concrete namespace....
-Nov 26, 2020 12:26:01 PM clojure.tools.logging$eval8218$fn__8221 invoke
-INFO: Library /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so found at [:system "/home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so"]
+user> (require '[libjulia-clj.julia :as julia])
 nil
+user> (julia/initialize!)
+07:07:06.228 [nREPL-session-e1c7b4a4-54f4-4298-80bb-972e83b902ff] INFO libjulia-clj.impl.base - Attempting to initialize Julia at /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so
+07:07:07.121 [nREPL-session-e1c7b4a4-54f4-4298-80bb-972e83b902ff] INFO tech.v3.jna.base - Library /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so found at [:system "/home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so"]
+:ok
 user> (def ones-fn (julia/eval-string "Base.ones"))
 #'user/ones-fn
 user> (ones-fn 3 4)
