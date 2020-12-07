@@ -1,3 +1,1 @@
-{:deps {org.clojure/clojure            {:mvn/version "1.10.2-alpha2"}
-        cnuernber/dtype-next           {:mvn/version "6.00-beta-9"}
-        cnuernber/libjulia-clj         {:mvn/version "0.01"}}}
+{:deps {cnuernber/libjulia-clj         {:mvn/version "0.01"}}}
