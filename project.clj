@@ -6,6 +6,7 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [cnuernber/dtype-next "6.00-beta-9"]
                  [techascent/tech.jna "4.05"]]
+  :jvm-opts ["-Xsigchain" "-Xrs"]
   :java-source-paths ["java"]
   ;;sane logging please
   :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.2.3"]]}

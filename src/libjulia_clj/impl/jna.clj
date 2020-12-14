@@ -557,10 +557,14 @@
 
 
 (defn disable-julia-signals!
-  []
+  [& [options]]
   (let [opts (julia-options)]
-    (set! (.handle_signals opts) 0)
-    (.writeField opts "handle_signals")))
+    (when-not (:signals-enabled? options)
+      (set! (.handle_signals opts) 0)
+      (.writeField opts "handle_signals"))
+    (when-let [n-threads (:n-threads options)]
+      (set! (.nthreads opts) n-threads)
+      (.writeField opts "nthreads"))))
 
 
 (defmacro with-disabled-julia-gc

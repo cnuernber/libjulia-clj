@@ -154,7 +154,8 @@
   [user-path]->JULIA_HOME->\"julia\"
 
   Returns :ok on success else exception."
-  ([{:keys [julia-library-path]}]
+  ([{:keys [julia-library-path]
+     :as options}]
    (let [julia-library-path (cond
                               (not (nil? julia-library-path))
                               julia-library-path
@@ -177,7 +178,7 @@
          ;;The JVM uses SIGSEGV signals during it's normal course of
          ;;operation.  Without disabling Julia's signal handling  this will
          ;;cause an instantaneous and unceremonious exit :-).
-         (julia-jna/disable-julia-signals!)
+         (julia-jna/disable-julia-signals! options)
          (julia-jna/jl_init__threading)
          (julia-jna/initialize-typemap!)
          (initialize-julia-root-map!)
