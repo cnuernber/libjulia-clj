@@ -1,25 +1,19 @@
 # Julia, The JVM, and Signals
 
-Julia and the JVM both rely on an operating concept called [signals](https://en.wikipedia.org/wiki/Signal_(IPC)#:~:text=Signals%20are%20a%20limited%20form,of%20an%20event%20that%20occurred.).  These are a simple method of IPC and if you aren't familiar with them
+Julia and the JVM both rely on an operating concept called <a href="https://en.wikipedia.org/wiki/Signal_(IPC)">signals</a>
+which are a simple method of IPC.  If you aren't familiar with them
 it probably isn't necessary to get familiar right now but it is necessary
 in order to use libjulia-clj for you to understand how the signal mechanism
 in these two systems interact and what happens when they interact poorly.
 
 
-Signals have integer names and a process in unix can install signal handlers
-which are a function to be called when a given signal is triggered.  You may
-have heard of a few of them; at least `SIGSEGV` which is a signal normally
-reserved for when the operating system detects an out-of-bounds memory access,
-otherwise called a segmentation fault.
-
-
 ## Two Worlds Collide
 
-When using Julia from the JVM you are likely to run into instances where, during
-their normal course of operation their respective usage of signals conflict.  For
-instance, the JVM uses `SIGSEGV` during it's normal course of operation and if the
-Julia handler for `SIGSEGV` is installed then things like a normal JVM garbage
-collection run can cause the process to unceremoniously exit:
+When using both Julia and the JVM in the same process you are likely to run into
+instances where, during their normal course of operation their respective usage of
+signals conflict.  For instance, the JVM uses `SIGSEGV` during it's normal course of
+operation and if the Julia handler for `SIGSEGV` is installed then things like a
+normal JVM garbage collection run can cause the process to unceremoniously exit:
 
 ```clojure
 user> (require '[libjulia-clj.julia :as julia])
@@ -38,12 +32,10 @@ Julia has an option to disable it's use of signals but this results in a crash a
 requires the use of at least `SIGINT` in order to manage garbage collection in
 multithreaded code.
 
-If we simply disable Julia's use of signals then single-threaded code or
-multithreaded code that doesn't produce much garbage works fine.  Multithreaded
-code, however, will eventually crash without warning:
+If we simply disable Julia's use of signals then single-threaded code works fine.
+Multithreaded code, however, will eventually crash without warning:
 
 ```clojure
-
 user> (require '[libjulia-clj.julia :as julia])
 nil
 user> (julia/initialize! {:n-threads 8 :signals-enabled? false})
