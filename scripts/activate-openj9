@@ -1,16 +1,19 @@
 #!/bin/bash
 
-OPENJ9_VERSION=jdk8u275-b01
+OPENJ9_VERSION="jdk8u275-b01"
+OPENJ9_VERSION_NODASH="8u275b01"
+J9_VERSION="0.23.0"
+J9_TARNAME="OpenJDK8U-jdk_x64_linux_openj9_$OPENJ9_VERSION_NODASH_openj9-$J9_VERSION.tar.gz"
 JAVA_PATH=$(pwd)/openj9/$OPENJ9_VERSION/bin
 
 if [ ! -e "$JAVA_PATH/java" ]; then
     mkdir -p openj9
     pushd openj9
-    wget "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/$OPENJ9_VERSION_openj9-0.23.0/OpenJDK8U-jdk_x64_linux_openj9_8u275b01_openj9-0.23.0.tar.gz"
-    tar -xvzf OpenJDK8U-jdk_x64_linux_openj9_8u275b01_openj9-0.23.0.tar.gz
+    wget "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/$OPENJ9_VERSION_openj9-$J9_VERSION/$J9_TARNAME"
+    tar -xvzf $J9_TARNAME
     popd
 fi
 
-
+export LD_PRELOAD=$(pwd)/openj9/$OPENJ9_VERSION/jre/lib/amd64/j9vm/libjsig.so
 export PATH=$JAVA_PATH:$PATH
 

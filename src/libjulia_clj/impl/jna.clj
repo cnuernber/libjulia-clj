@@ -7,7 +7,8 @@
             [camel-snake-kebab.core :as csk]
             [clojure.string :as s]
             [clojure.java.io :as io]
-            [clojure.set :as set])
+            [clojure.set :as set]
+            [clojure.tools.logging :as log])
   (:import [com.sun.jna Pointer NativeLibrary]
            [julia_clj JLOptions]))
 
@@ -558,8 +559,13 @@
 
 (defn disable-julia-signals!
   [& [options]]
-  (let [opts (julia-options)]
-    (when-not (:signals-enabled? options)
+  (let [opts (julia-options)
+        n-threads (:n-threads options)
+        signals-enabled? (or (:signals-enabled? options)
+                             (not (nil? n-threads)))]
+    (log/infof "Julia startup options: n-threads %d, signals? %s"
+               n-threads signals-enabled?)
+    (when-not signals-enabled?
       (set! (.handle_signals opts) 0)
       (.writeField opts "handle_signals"))
     (when-let [n-threads (:n-threads options)]
