@@ -561,8 +561,7 @@
   [& [options]]
   (let [opts (julia-options)
         n-threads (:n-threads options)
-        signals-enabled? (or (:signals-enabled? options)
-                             (not (nil? n-threads)))]
+        signals-enabled? (:signals-enabled? options (not (nil? n-threads)))]
     (log/infof "Julia startup options: n-threads %d, signals? %s"
                n-threads signals-enabled?)
     (when-not signals-enabled?
