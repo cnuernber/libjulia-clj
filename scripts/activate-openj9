@@ -1,0 +1,16 @@
+#!/bin/bash
+
+OPENJ9_VERSION=jdk8u275-b01
+JAVA_PATH=$(pwd)/openj9/$OPENJ9_VERSION/bin
+
+if [ ! -e "$JAVA_PATH/java" ]; then
+    mkdir -p openj9
+    pushd openj9
+    wget "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/$OPENJ9_VERSION_openj9-0.23.0/OpenJDK8U-jdk_x64_linux_openj9_8u275b01_openj9-0.23.0.tar.gz"
+    tar -xvzf OpenJDK8U-jdk_x64_linux_openj9_8u275b01_openj9-0.23.0.tar.gz
+    popd
+fi
+
+
+export PATH=$JAVA_PATH:$PATH
+
