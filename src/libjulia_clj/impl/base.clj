@@ -153,7 +153,16 @@
 
   [user-path]->JULIA_HOME->\"julia\"
 
-  Returns :ok on success else exception."
+  Returns :ok on success else exception.
+
+  Options:
+
+  * `:julia-library-path` - Explicitly declare the location of the libjulia shared library.
+  * `:n-threads` - Set to -1 to set to n-cpus.  Defaults to nil which means single threaded
+     unless the JULIA_NUM_THREADS environment variable is set.  Note that this has implications
+     for application stability - see the signals.md topic.
+  * `:signals-enabled?` - Users do not usually need to set this.  This allows users to disable
+     all of Julia's signal handling most likely leading to a crash.  See the signals.md topic."
   ([{:keys [julia-library-path]
      :as options}]
    (let [julia-library-path (cond
