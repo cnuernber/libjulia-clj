@@ -23,5 +23,6 @@
                              :namespaces [libjulia-clj.julia
                                           libjulia-clj.modules.Base
                                           libjulia-clj.modules.Core
-                                          libjulia-clj.modules.LinearAlgebra]}}}
+                                          libjulia-clj.modules.LinearAlgebra
+                                          libjulia-clj.modules.DifferentialEquations]}}}
   :aliases {"codox" ["with-profile" "codox,dev" "codox"]})
