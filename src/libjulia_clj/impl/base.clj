@@ -16,11 +16,15 @@
             [libjulia-clj.impl.protocols :as julia-proto]
             [primitive-math :as pmath]
             [clojure.tools.logging :as log])
-  (:import [com.sun.jna Pointer NativeLibrary]
+  (:import [com.sun.jna Pointer NativeLibrary CallbackReference]
            [java.nio.file Paths]
            [java.util Map Iterator NoSuchElementException]
-           [clojure.lang IFn Symbol Keyword])
+           [clojure.lang IFn Symbol Keyword]
+           [libjulia_clj JLFunction])
   (:refer-clojure :exclude [struct]))
+
+
+(set! *warn-on-reflection* true)
 
 
 (defonce jvm-julia-roots* (atom nil))
@@ -224,7 +228,7 @@
         (dtype/clone))))
 
 
-(deftype GenericJuliaObject [^Pointer handle]
+(deftype GenericJuliaObject [^Pointer handle gc-obj]
   julia-proto/PToJulia
   (->julia [item] handle)
   jna/PToPtr
@@ -269,7 +273,7 @@
 
 (defmacro ^:private impl-callable-julia-object
   []
-  `(deftype ~'CallableJuliaObject [~'handle ~'kw-fn-handle]
+  `(deftype ~'CallableJuliaObject [~'handle ~'kw-fn-handle ~'gc-obj]
      julia-proto/PToJulia
      (->julia [item] ~'handle)
      julia-proto/PJuliaKWFn
@@ -330,12 +334,15 @@
 
 (defmethod julia-proto/julia->jvm :default
   [julia-val options]
-  ;;Do not root when someone asks us not to or when
-  ;;we have explicitly disabled the julia gc.
-  (root-ptr! julia-val options)
-  (if (jl-obj-callable? julia-val)
-    (CallableJuliaObject. julia-val (kw-fn julia-val {:unrooted? true}))
-    (GenericJuliaObject. julia-val)))
+  (when julia-val
+    ;;Do not root when someone asks us not to or when
+    ;;we have explicitly disabled the julia gc.
+    (root-ptr! julia-val options)
+    (if (jl-obj-callable? julia-val)
+      (CallableJuliaObject. julia-val (kw-fn julia-val {:unrooted? true})
+                            (:gc-obj options))
+      (GenericJuliaObject. julia-val
+                           (:gc-obj options)))))
 
 
 (extend-protocol julia-proto/PToJulia
@@ -746,3 +753,50 @@
                        (module-fn :getindex first-tuple 2)
                        (module-fn :getindex first-tuple 1))
           (JLIterator. jl-obj nil nil))))))
+
+
+(defn fn->jl
+  "Convert a clojure function to a Julia void-ptr."
+  ([clj-fn {:keys [no-coerce?] :as options}]
+   (errors/when-not-errorf (or (instance? IFn clj-fn)
+                               (instance? JLFunction clj-fn))
+     "Item %s is not an instance of IFn"
+     clj-fn)
+   (let [^JLFunction clj-fn
+         (if (instance? JLFunction clj-fn)
+           clj-fn
+           (reify JLFunction
+             (jlinvoke [this args]
+               (try
+                 (let [retval (if no-coerce?
+                                (clj-fn args)
+                                (apply clj-fn (julia-proto/julia->jvm
+                                               args options)))]
+                   ;;Explicit nil check so we can return booleans.
+                   (if (nil? retval)
+                     (julia-jna/jl_nothing)
+                     (julia-proto/->julia retval)))
+                 (catch Throwable e
+                   (log/warnf e "Clojure fn errored during julia call")
+                   (julia-jna/jl_nothing))))))
+         fn-ptr (CallbackReference/getFunctionPointer clj-fn)]
+     (julia-proto/julia->jvm (julia-jna/jl_box_voidpointer fn-ptr)
+                             {:gc-obj [clj-fn fn-ptr]})))
+  ([clj-fn]
+   (fn->jl clj-fn nil)))
+
+
+(def fn-wrapper* (delay (->
+                         (julia-jna/jl_eval_string "function(fn_ptr::Ptr{Nothing}) return function(a...) return ccall(fn_ptr, Any, (Any,), a) end end")
+                         (julia-proto/julia->jvm nil))))
+
+;;Object default protocol implementation
+(extend-type Object
+  julia-proto/PToJulia
+  (->julia [item]
+    (if (instance? IFn item)
+      (let [jl-fn (fn->jl item)
+            ^CallableJuliaObject wrapped-fn (@fn-wrapper* jl-fn)]
+        (CallableJuliaObject. (.handle wrapped-fn) (.kw-fn-handle wrapped-fn)
+                              [jl-fn (.gc-obj wrapped-fn)]))
+      (errors/throwf "Item %s is not convertible to julia" item))))

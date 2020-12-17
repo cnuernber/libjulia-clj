@@ -282,6 +282,12 @@
   [x unchecked-double])
 
 
+(def-julia-fn jl_box_voidpointer
+  "Box a pointer value to a julia voidptr value"
+  Pointer
+  [x jna/ensure-ptr])
+
+
 ;;Unboxing things from julia-land
 
 (def-julia-fn jl_unbox_bool
@@ -481,7 +487,6 @@
 (defn jl_top_module
   ^Pointer []
   (find-deref-julia-symbol "jl_top_module"))
-
 
 (defn jl_nothing
   ^Pointer []

@@ -16,22 +16,17 @@
   (kw-fn [item]))
 
 
-;;Object default protocol implementation
-(extend-type Object
-  PToJulia
-  (->julia [item]
-    (errors/throwf "Item %s is not convertible to julia" item)))
-
-
 (defmulti julia->jvm
   "Convert a julia value to the JVM.
 
   Options:
 
-  * `:unrooted?` - defaults to false.  When true, value is not rooted and
-     no thus the julia GC may remove the value any point in your program's execution most
+  * `:unrooted?` - defaults to false.  When true, value is not rooted and no thus the
+     julia GC may remove the value any point in your program's execution most
      likely resulting in a crash.
   * `:log-level` - When anything at all, jvm-gc<->julia-gc bindings will emit messages
-     when an object is bound or unbound."
+     when an object is bound or unbound.
+  * `:gc-obj` - Have the new julia object maintain a reference to this object.  Only
+     used for very special cases."
   (fn [julia-val options]
     (julia-jna/jl-ptr->typename julia-val)))
