@@ -57,7 +57,7 @@
            native-value (Pointer/nativeValue value)
            untracked-value (Pointer. native-value)
            ;;Eventually we will turn off default logging...
-           log-level (or (:log-level options) :info)]
+           log-level (:log-level options)]
        (when log-level
          (log/logf log-level "Rooting address  0x%016X" native-value))
        (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)

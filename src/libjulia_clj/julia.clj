@@ -1,5 +1,5 @@
 (ns libjulia-clj.julia
-  "Public API for Julia functionality.  Initialize! must be called before eval-string
+  "Public API for Julia functionality.  Initialize! must be called before any other functions
   and cycle-gc! should be called periodically.  It is probably a bad idea to call Julia
   from multiple threads so access to julia should be from one thread or protected via
   a mutex.
@@ -11,7 +11,7 @@ user> (require '[libjulia-clj.julia :as julia])
 nil
 user> (julia/initialize!)
 :ok
-user> (def ones-fn (julia/eval-string \"Base.ones\"))
+user> (def ones-fn (julia/jl \"Base.ones\"))
 Nov 27, 2020 12:39:39 PM clojure.tools.logging$eval6611$fn__6614 invoke
 INFO: Rooting address  0x00007F3E092D6E40
 #'user/ones-fn
@@ -65,7 +65,7 @@ user> jl-ary
                 call-function-kw)
 
 
-(defn eval-string
+(defn jl
   "Eval a string in julia returning the result.  If the result is callable in Julia,
   the result will be callable in Clojure.  Currently one major limit is that you
   cannot pass a clojure IFn as a Julia callback."
@@ -74,8 +74,7 @@ user> jl-ary
      (base/check-last-error)
      (julia-proto/julia->jvm retval nil)))
   ([str-data]
-   (eval-string str-data nil)))
-
+   (jl str-data nil)))
 
 (defn typeof
   "Get the julia type of an item."
