@@ -722,6 +722,12 @@
   (JuliaArray. jl-ptr))
 
 
+(defmethod julia-proto/julia->jvm :jl-array-int-32-type
+  [jl-ptr options]
+  (root-ptr! jl-ptr options)
+  (JuliaArray. jl-ptr))
+
+
 (deftype JLIterator [iter
                      ^:unsynchronized-mutable iter-state
                      ^:unsynchronized-mutable last-value]

@@ -48,6 +48,8 @@ user> jl-ary
             [libjulia-clj.impl.gc :as julia-gc]
             ;;pure language extensions for now.
             [libjulia-clj.impl.collections]
+            [tech.v3.datatype :as dtype]
+            [tech.v3.tensor :as dtt]
             [tech.v3.datatype.export-symbols :refer [export-symbols]]
             [tech.v3.datatype.errors :as errors])
   (:refer-clojure :exclude [struct]))
@@ -75,6 +77,7 @@ user> jl-ary
      (julia-proto/julia->jvm retval nil)))
   ([str-data]
    (jl str-data nil)))
+
 
 (defn typeof
   "Get the julia type of an item."
@@ -115,3 +118,39 @@ user> jl-ary
   In the future point this may be done for you."
   []
   (julia-gc/clear-reference-queue))
+
+
+(defmacro with-stack-context
+  "Run code in which all objects created within this context will be released once
+  the stack unwinds where released means unrooted and thus potentially available to
+  the next julia garbage collection run."
+  [& body]
+  `(julia-gc/with-stack-context
+     ~@body))
+
+(defonce ^{:doc "Resolves to the base julia array datatype"}
+  base-ary-type* (delay (jl "Base.Array")))
+
+(defonce ^{:doc "Resolves to the julia undef type"}
+  jl-undef* (delay (jl "Base.undef")))
+
+(defn new-julia-array
+  "Create a new, uninitialized dense julia array"
+  ([shape {:keys [datatype] :or {datatype :float64}}]
+   (let [jl-dtype (base/lookup-julia-type datatype)
+         ary-type (apply-type @base-ary-type* jl-dtype)]
+     (apply ary-type @jl-undef* shape)))
+  ([shape]
+   (new-julia-array shape nil)))
+
+(defn ->julia-array
+  "Create a new dense julia array that is the 'transpose' of the input tensor.
+  Transposing ensures the memory alignment matches and as Julia is column-major
+  while datatype is row-major."
+  [tens]
+  (let [dtype (dtype/elemwise-datatype tens)
+        tens-shape (dtype/shape tens)
+        tens-rank (count tens-shape)
+        retval (new-julia-array tens-shape dtype)]
+    (dtype/copy! tens (dtt/transpose retval (reverse (range tens-rank))))
+    retval))
