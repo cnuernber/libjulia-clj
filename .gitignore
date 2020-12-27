@@ -7,9 +7,11 @@ pom.xml.asc
 *.jar
 *.class
 /.lein-*
-/.nrepl-port
+.nrepl-port
 .hgignore
 .hg/
 julia-1.5.3*
 julia
 openj9
+.cpcache
+*.png

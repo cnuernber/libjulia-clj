@@ -21,10 +21,12 @@
     ;;with each other.
     (System/gc)
     (jl/cycle-gc!)
-   (is (= [3 4] (dtype/shape jl-ary)))
-    (is (= [[25.0 25.0 25.0 25.0]
-            [1.0 1.0 1.0 1.0]
-            [1.0 1.0 1.0 1.0]]
+    ;;datatype is transpose of julia
+   (is (= [4 3] (dtype/shape jl-ary)))
+   (is (= [[25.0 25.0 25.0]
+           [1.0 1.0 1.0]
+           [1.0 1.0 1.0]
+           [1.0 1.0 1.0]]
            (mapv vec (dtt/as-tensor jl-ary)))))
   (System/gc)
   (jl/cycle-gc!))
@@ -80,5 +82,4 @@ end)")
   []
   (let [doasync (jl "function doasync(cback, arg) @async cback(arg) end")
         {:keys [ary-list raw-clj-fn before after wrapper]} (make-task-wrapper)]
-
     [before,after,wrapper]))

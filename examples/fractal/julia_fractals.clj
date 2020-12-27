@@ -74,7 +74,7 @@ end")
 
 
 (def jl-fn* (delay (do (julia/initialize!)
-                       (julia/eval-string julia-code))))
+                       (julia/jl julia-code))))
 
 
 (defn jl-fractal
@@ -82,12 +82,6 @@ end")
   (let [jl-fn @jl-fn*]
     (-> (jl-fn i1 i2 d zoom-factor fract-width fract-height)
         (dtt/ensure-tensor)
-        ;;Julia is column-major so our image comes out widthxheight
-        ;;datatype is row major.
-        (dtt/transpose [1 0])
-        ;;The tensor library *knows* the original was transposed so transposing the result
-        ;;back into row-major means the memory can be read in order and thus
-        ;;the copy operation below is one large memcopy into a jvm byte array.
         (dtype/copy! (bufimg/new-image fract-height fract-width :byte-gray)))))
 
 

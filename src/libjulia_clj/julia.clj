@@ -134,23 +134,26 @@ user> jl-ary
 (defonce ^{:doc "Resolves to the julia undef type"}
   jl-undef* (delay (jl "Base.undef")))
 
-(defn new-julia-array
-  "Create a new, uninitialized dense julia array"
-  ([shape {:keys [datatype] :or {datatype :float64}}]
+
+(defn new-array
+  "Create a new, uninitialized dense julia array.  Because Julia is column major
+  while tech.v3.datatype is row major, the returned array's size will be the
+  reverse of dtype/shape as that keeps the same in memory alignment of data."
+  ([shape datatype]
    (let [jl-dtype (base/lookup-julia-type datatype)
          ary-type (apply-type @base-ary-type* jl-dtype)]
      (apply ary-type @jl-undef* shape)))
   ([shape]
-   (new-julia-array shape nil)))
+   (new-array shape :float64)))
 
-(defn ->julia-array
+
+(defn ->array
   "Create a new dense julia array that is the 'transpose' of the input tensor.
   Transposing ensures the memory alignment matches and as Julia is column-major
   while datatype is row-major."
   [tens]
   (let [dtype (dtype/elemwise-datatype tens)
         tens-shape (dtype/shape tens)
-        tens-rank (count tens-shape)
-        retval (new-julia-array tens-shape dtype)]
-    (dtype/copy! tens (dtt/transpose retval (reverse (range tens-rank))))
+        retval (new-array (reverse tens-shape) dtype)]
+    (dtype/copy! tens retval)
     retval))

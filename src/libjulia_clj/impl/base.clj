@@ -693,15 +693,15 @@
   dtype-proto/PShape
   (shape [this]
     (let [rank (julia-jna/jl_array_rank handle)]
-      (mapv #(julia-jna/jl_array_size handle %) (range rank))))
+      (mapv #(julia-jna/jl_array_size handle %)
+            (reverse (range rank)))))
   dtype-proto/PECount
   (ecount [this]
     (long (apply * (dtype-proto/shape this))))
   dtype-proto/PToTensor
   (as-tensor [this]
     (-> (julia-array->nd-descriptor handle)
-        (dtt/nd-buffer-descriptor->tensor)
-        (dtt/transpose (vec (reverse (range (julia-jna/jl_array_rank handle)))))))
+        (dtt/nd-buffer-descriptor->tensor)))
   dtype-proto/PToNDBufferDesc
   (convertible-to-nd-buffer-desc? [this] true)
   (->nd-buffer-descriptor [this] (julia-array->nd-descriptor handle))
