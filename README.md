@@ -26,7 +26,7 @@ user> (julia/initialize!)
 07:07:06.228 [nREPL-session-e1c7b4a4-54f4-4298-80bb-972e83b902ff] INFO libjulia-clj.impl.base - Attempting to initialize Julia at /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so
 07:07:07.121 [nREPL-session-e1c7b4a4-54f4-4298-80bb-972e83b902ff] INFO tech.v3.jna.base - Library /home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so found at [:system "/home/chrisn/dev/cnuernber/libjulia-clj/julia-1.5.3/lib/libjulia.so"]
 :ok
-user> (def ones-fn (julia/eval-string "Base.ones"))
+user> (def ones-fn (julia/jl "Base.ones"))
 #'user/ones-fn
 user> (ones-fn 3 4)
 [1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0; 1.0 1.0 1.0 1.0]
@@ -85,7 +85,7 @@ user> (def julia-code
     return matrix
 end")
 #'user/julia-code
-user> (def fractal-fn (julia/eval-string julia-code))
+user> (def fractal-fn (julia/jl julia-code))
 #'user/fractal-fn
 user> (defn jl-fractal
         []
