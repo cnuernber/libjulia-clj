@@ -120,13 +120,15 @@ user> jl-ary
   (julia-gc/clear-reference-queue))
 
 
-(defmacro with-stack-context
-  "Run code in which all objects created within this context will be released once
-  the stack unwinds where released means unrooted and thus potentially available to
-  the next julia garbage collection run."
-  [& body]
-  `(julia-gc/with-stack-context
-     ~@body))
+;; This requires us to do our own reference counting so as to only release an
+;; object once.  I am not ready to implement that yet.
+;; (defmacro with-stack-context
+;;   "Run code in which all objects created within this context will be released once
+;;   the stack unwinds where released means unrooted and thus potentially available to
+;;   the next julia garbage collection run."
+;;   [& body]
+;;   `(julia-gc/with-stack-context
+;;      ~@body))
 
 (defonce ^{:doc "Resolves to the base julia array datatype"}
   base-ary-type* (delay (jl "Base.Array")))
