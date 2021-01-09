@@ -1,4 +1,4 @@
-(defproject cnuernber/libjulia-clj "0.06"
+(defproject cnuernber/libjulia-clj "0.07-SNAPSHOT"
   :description "Experimental Julia bindings for Clojure."
   :url "https://github.com/cnuernber/libjulia-clj"
   :license {:name "EPL-2.0"
