@@ -10,7 +10,7 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log])
   (:import [com.sun.jna Pointer NativeLibrary]
-           [julia_clj JLOptions]))
+           [julia_clj JLOptions DirectMapped]))
 
 
 
@@ -37,6 +37,13 @@
        ~(if rettype
           `(.invoke (jna-base/to-typed-fn ~'jl-fn) ~rettype ~'fn-args)
           `(.invoke (jna-base/to-typed-fn ~'jl-fn) ~'fn-args)))))
+
+(defn setup-direct-mapping!
+  "Setup the directmapped class for particular optimized pathways."
+  []
+  (let [library (jna/load-library @julia-library-path*)]
+    (com.sun.jna.Native/register DirectMapped library)))
+
 
 (defn jl_value_t
   ^Pointer [item]
@@ -183,42 +190,40 @@
   [x jl_value_t]
   [t jl_value_t])
 
-(def-julia-fn jl_call
+(defn jl_call
   "Call a julia function"
-  Pointer
-  [f jl_function_t]
-  [args jna/ensure-ptr]
-  [nargs int])
+  ^Pointer [f args nargs]
+  (DirectMapped/jl_call (jl_function_t f)
+                        (jna/ensure-ptr args)
+                        (int nargs)))
 
-(def-julia-fn jl_call0
+(defn jl_call0
   "Call a julia function with no arguments"
-  Pointer
-  [f jl_function_t])
+  ^Pointer [f]
+  (DirectMapped/jl_call0 (jl_function_t f)))
 
 
-(def-julia-fn jl_call1
+(defn jl_call1
   "Call a julia function with no arguments"
-  Pointer
-  [f jl_function_t]
-  [a jl_value_t])
+  ^Pointer [f a0]
+  (DirectMapped/jl_call1 (jl_function_t f) (jl_value_t a0)))
 
 
-(def-julia-fn jl_call2
+(defn jl_call2
   "Call a julia function with no arguments"
-  Pointer
-  [f jl_function_t]
-  [a jl_value_t]
-  [b jl_value_t])
+  ^Pointer [f a0 a1]
+  (DirectMapped/jl_call2 (jl_function_t f)
+                         (jl_value_t a0)
+                         (jl_value_t a1)))
 
 
-(def-julia-fn jl_call3
+(defn jl_call3
   "Call a julia function with no arguments"
-  Pointer
-  [f jl_function_t]
-  [a jl_value_t]
-  [b jl_value_t]
-  [c jl_value_t])
-
+  ^Pointer [f a0 a1 a2]
+  (DirectMapped/jl_call3 (jl_function_t f)
+                         (jl_value_t a0)
+                         (jl_value_t a1)
+                         (jl_value_t a2)))
 
 ;;Boxing things up into julia-land
 
@@ -567,14 +572,17 @@
   (let [opts (julia-options)
         n-threads (:n-threads options)
         signals-enabled? (:signals-enabled? options (not (nil? n-threads)))]
-    (log/infof "Julia startup options: n-threads %d, signals? %s"
-               n-threads signals-enabled?)
+    (log/infof "Julia startup options: n-threads %d, signals? %s, opt-level %d"
+               n-threads signals-enabled? (:optimization-level options 0))
     (when-not signals-enabled?
       (set! (.handle_signals opts) 0)
       (.writeField opts "handle_signals"))
     (when-let [n-threads (:n-threads options)]
       (set! (.nthreads opts) n-threads)
-      (.writeField opts "nthreads"))))
+      (.writeField opts "nthreads"))
+    (when-let [opt-level (:optimization-level options)]
+      (set! (.opt_level opts) (int opt-level))
+      (.writeField opts "opt_level"))))
 
 
 (defmacro with-disabled-julia-gc

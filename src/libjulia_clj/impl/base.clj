@@ -40,12 +40,15 @@
    "Attempt to initialize julia root map twice")
   (let [refmap (julia-jna/jl_eval_string "jvm_refs = IdDict()")
         set-index! (julia-jna/jl_get_function (julia-jna/jl_base_module) "setindex!")
-        delete! (julia-jna/jl_get_function (julia-jna/jl_base_module) "delete!")]
+        delete! (julia-jna/jl_get_function (julia-jna/jl_base_module) "delete!")
+        haskey (julia-jna/jl_get_function (julia-jna/jl_base_module) "haskey")]
     (reset! jvm-julia-roots*
             {:jvm-refs refmap
              :set-index! set-index!
-             :delete! delete!})))
+             :delete! delete!
+             :haskey haskey})))
 
+(defonce julia-gc-root-log-level* (atom nil))
 
 (defn root-ptr!
   "Root a pointer and set a GC hook that will unroot it when the time comes.
@@ -53,20 +56,29 @@
   ([^Pointer value options]
    (when-not (or (:unrooted? options)
                  (== 0 (julia-jna/jl_gc_is_enabled)))
-     (let [{:keys [jvm-refs set-index! delete!]} @jvm-julia-roots*
+     (let [{:keys [jvm-refs set-index! delete! haskey]} @jvm-julia-roots*
            native-value (Pointer/nativeValue value)
            untracked-value (Pointer. native-value)
            ;;Eventually we will turn off default logging...
-           log-level (:log-level options)]
-       (when log-level
-         (log/logf log-level "Rooting address  0x%016X" native-value))
-       (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)
-       (gc/track value (fn []
-                         (when log-level
-                           (log/logf log-level
-                                     "Unrooting address 0x%016X"
-                                     native-value))
-                         (julia-jna/jl_call2 delete! jvm-refs untracked-value))))))
+           log-level (:log-level options @julia-gc-root-log-level*)]
+       ;;We do not root pointers twice; that could cause a crash when
+       ;;dereferencing
+       (if-not (julia-proto/julia->jvm
+                (julia-jna/jl_call2 haskey jvm-refs untracked-value)
+                {})
+         (do
+           (when log-level
+             (log/logf log-level "Rooting address  0x%016X - %s"
+                       native-value (julia-jna/jl-ptr->typename value)))
+           (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)
+           (gc/track value (fn []
+                             (when log-level
+                               (log/logf log-level
+                                         "Unrooting address 0x%016X"
+                                         native-value))
+                             (julia-jna/jl_call2 delete! jvm-refs untracked-value))))
+         ;;already rooted
+         value))))
   ([value]
    (root-ptr! value nil)))
 
@@ -166,7 +178,9 @@
      unless the JULIA_NUM_THREADS environment variable is set.  Note that this has implications
      for application stability - see the signals.md topic.
   * `:signals-enabled?` - Users do not usually need to set this.  This allows users to disable
-     all of Julia's signal handling most likely leading to a crash.  See the signals.md topic."
+     all of Julia's signal handling most likely leading to a crash.  See the signals.md topic.
+  * `:optimization-level` - 0-3, defaults to 0 - explicitly enable more sophisticated julia
+     optimizations."
   ([{:keys [julia-library-path]
      :as options}]
    (let [julia-library-path (cond
@@ -194,6 +208,7 @@
          (julia-jna/disable-julia-signals! options)
          (julia-jna/jl_init__threading)
          (julia-jna/initialize-typemap!)
+         (julia-jna/setup-direct-mapping!)
          (initialize-julia-root-map!)
          (initialize-module-functions!))
        (catch Throwable e
@@ -299,8 +314,7 @@
        (let [[pos-args# kw-args#] (args->pos-kw-args argseq#)]
          (if (nil? kw-args#)
            (call-function ~'handle argseq# nil)
-           (call-function-kw ~'kw-fn-handle ~'handle pos-args# kw-args#)))
-       (call-function ~'handle argseq# nil))))
+           (call-function-kw ~'kw-fn-handle ~'handle pos-args# kw-args#))))))
 
 
 (impl-callable-julia-object)
@@ -490,8 +504,8 @@
   rooted.  This method is normally not necessary but useful if you would like to
   use keywords in your argument list or specify to avoid rooting the result."
   ([fn-handle args options]
-   (-> (raw-call-function fn-handle args)
-       (julia-proto/julia->jvm options)))
+   (let [retval (raw-call-function fn-handle args)]
+     (julia-proto/julia->jvm retval options)))
   ([fn-handle args]
    (call-function fn-handle args nil)))
 
@@ -708,6 +722,9 @@
   dtype-proto/PToBuffer
   (convertible-to-buffer? [this] true)
   (->buffer [this] (dtype-proto/->buffer (dtt/as-tensor this)))
+  dtype-proto/PToNativeBuffer
+  (convertible-to-native-buffer? [this] true)
+  (->native-buffer [this] (dtype-proto/as-tensor this))
   Object
   (toString [this]
     (jl-obj->str handle)))
@@ -716,16 +733,38 @@
 (dtype-pp/implement-tostring-print JuliaArray)
 
 
-(defmethod julia-proto/julia->jvm "Array"
+(defn- wrap-array
   [jl-ptr options]
   (root-ptr! jl-ptr options)
   (JuliaArray. jl-ptr))
 
 
-(defmethod julia-proto/julia->jvm :jl-array-int-32-type
-  [jl-ptr options]
-  (root-ptr! jl-ptr options)
-  (JuliaArray. jl-ptr))
+(defmethod julia-proto/julia->jvm "Array" [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-int-64-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-uint-64-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-int-32-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-uint-32-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-int-16-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-uint-16-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-int-8-type [jl-ptr options]
+  (wrap-array jl-ptr options))
+
+(defmethod julia-proto/julia->jvm :jl-array-uint-8-type [jl-ptr options]
+  (wrap-array jl-ptr options))
 
 
 (deftype JLIterator [iter

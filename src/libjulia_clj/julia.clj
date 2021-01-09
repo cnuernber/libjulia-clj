@@ -120,15 +120,26 @@ user> jl-ary
   (julia-gc/clear-reference-queue))
 
 
-;; This requires us to do our own reference counting so as to only release an
-;; object once.  I am not ready to implement that yet.
-;; (defmacro with-stack-context
-;;   "Run code in which all objects created within this context will be released once
-;;   the stack unwinds where released means unrooted and thus potentially available to
-;;   the next julia garbage collection run."
-;;   [& body]
-;;   `(julia-gc/with-stack-context
-;;      ~@body))
+(defmacro with-stack-context
+  "Run code in which all objects created within this context will be released once
+  the stack unwinds where released means unrooted and thus potentially available to
+  the next julia garbage collection run."
+  [& body]
+  `(julia-gc/with-stack-context
+     ~@body))
+
+
+(defn set-julia-gc-root-log-level!
+  "Set the log level to use when rooting/unrooting julia objects.  We automatically
+  root julia objects in a julia id dictionary that we expose to JVM objects.
+  This code isn't yet perfect, so sometimes it is worthwhile to log all
+  root/unroot operations.
+
+  Valid log levels are valid log levels for
+  [`clojure/tools.logging`](http://clojure.github.io/tools.logging/)."
+  [log-level]
+  (reset! base/julia-gc-root-log-level* log-level))
+
 
 (defonce ^{:doc "Resolves to the base julia array datatype"}
   base-ary-type* (delay (jl "Base.Array")))
@@ -143,7 +154,8 @@ user> jl-ary
   reverse of dtype/shape as that keeps the same in memory alignment of data."
   ([shape datatype]
    (let [jl-dtype (base/lookup-julia-type datatype)
-         ary-type (apply-type @base-ary-type* jl-dtype)]
+         ary-type (julia-jna/with-disabled-julia-gc
+                    (apply-type @base-ary-type* jl-dtype))]
      (apply ary-type @jl-undef* shape)))
   ([shape]
    (new-array shape :float64)))
@@ -151,7 +163,7 @@ user> jl-ary
 
 (defn ->array
   "Create a new dense julia array that is the 'transpose' of the input tensor.
-  Transposing ensures the memory alignment matches and as Julia is column-major
+  Transposing ensures the memory alignment matches as Julia is column-major
   while datatype is row-major."
   [tens]
   (let [dtype (dtype/elemwise-datatype tens)

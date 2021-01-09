@@ -11,6 +11,8 @@
 
 @init*
 
+(jl/set-julia-gc-root-log-level! :info)
+
 
 (deftest julia-test
   (let [ones-fn (jl "Base.ones")
@@ -33,53 +35,43 @@
 
 
 (deftest kw-manual-args-test
-  (let [add-fn (jl "function teste(a;c = 1.0, b = 2.0)
+  (jl/with-stack-context
+    (let [add-fn (jl "function teste(a;c = 1.0, b = 2.0)
     a+b+c
 end")
-        kwfunc (jl "Core.kwfunc")
-        add-kwf (kwfunc add-fn)]
-    (is (= 38.0 (add-kwf (jl/named-tuple {'b 10 'c 20})
-                         add-fn
-                         8.0)))
-    (is (= 19.0 (add-kwf (jl/named-tuple {'b 10})
-                       add-fn
-                       8.0)))
-    (is (= 11.0 (add-kwf (jl/named-tuple)
-                         add-fn
-                         8.0)))
+          kwfunc (jl "Core.kwfunc")
+          add-kwf (kwfunc add-fn)]
+      (is (= 38.0 (add-kwf (jl/named-tuple {'b 10 'c 20})
+                           add-fn
+                           8.0)))
+      (is (= 19.0 (add-kwf (jl/named-tuple {'b 10})
+                           add-fn
+                           8.0)))
+      (is (= 11.0 (add-kwf (jl/named-tuple)
+                           add-fn
+                           8.0)))
 
-    (is (= 38.0 (add-fn 8.0 :b 10 :c 20)))
-    (is (= 19.0 (add-fn 8 :b 10)))
-    (is (= 11.0 (add-fn 8))))
-  ;;Note that things are still rooted at this point even though let scope has closed.
-  (System/gc)
-  (jl/cycle-gc!))
+      (is (= 38.0 (add-fn 8.0 :b 10 :c 20)))
+      (is (= 19.0 (add-fn 8 :b 10)))
+      (is (= 11.0 (add-fn 8))))))
 
 
-(defn make-task-wrapper
-  []
-  (let [ary-list (java.util.ArrayList.)
-        raw-clj-fn (jl-base/fn->jl (fn [data] (.add ary-list data)))
-        [before,after,wrapper] (jl "before = Any[]; after = Any[];
-(before,after,
-function wrapper(fn_ptr)
-  function cback(args...)
-    push!(before, args)
-    ccall(fn_ptr, Any, (Any,), args)
-    push!(after, args)
-  end
-end)")
-        cback (wrapper raw-clj-fn)]
-    {:ary-list ary-list
-     :raw-fn raw-clj-fn
-     :before before
-     :after after
-     :wrapper wrapper
-     :cback cback}))
-
-
-(defn callback-from-task
-  []
-  (let [doasync (jl "function doasync(cback, arg) @async cback(arg) end")
-        {:keys [ary-list raw-clj-fn before after wrapper]} (make-task-wrapper)]
-    [before,after,wrapper]))
+(deftest stack-context
+  (jl/with-stack-context
+    (let [jl-data (jl/new-array [2 2] :float32)
+          size (jl "size")]
+      (= [2 2] (vec (size jl-data)))))
+  (jl/with-stack-context
+    (let [tdata (dtt/->tensor (partition 3 (range 9)) :datatype :int32)
+          jl-ary (jl/->array tdata)
+          ary-data (dtype/make-container :int32 jl-ary)]
+      (is (= (vec (range 9))
+             (vec ary-data)))))
+  (jl/with-stack-context
+    (let [tdata (dtt/->tensor (partition 3 (range 9)) :datatype :int32)
+          jl-ary (jl/->array tdata)
+          id-fn (jl "identity")
+          ;;This one should not get rooted
+          jl-ary2 (id-fn jl-ary)]
+      (is (= (vec (range 9))
+             (vec (dtype/make-container :int64 jl-ary2)))))))
