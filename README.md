@@ -5,6 +5,7 @@
 
 
 * [API docs](https://cnuernber.github.io/libjulia-clj/)
+* [In-Depth Example](https://github.com/cnuernber/kmeans-mnist)
 
 ## Usage
 
