@@ -1,8 +1,8 @@
 (ns libjulia-clj.julia
   "Public API for Julia functionality.  Initialize! must be called before any other functions
-  and cycle-gc! should be called periodically.  It is probably a bad idea to call Julia
-  from multiple threads so access to julia should be from one thread or protected via
-  a mutex.
+  and there are a choice of garbgage collection mechanisms (see topic in docs).
+  is probably a bad idea to call Julia from multiple threads so access to julia
+  should be from one thread or protected via a mutex.
 
 Example:
 
