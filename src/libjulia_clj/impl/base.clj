@@ -724,7 +724,8 @@
   (->buffer [this] (dtype-proto/->buffer (dtt/as-tensor this)))
   dtype-proto/PToNativeBuffer
   (convertible-to-native-buffer? [this] true)
-  (->native-buffer [this] (dtype-proto/as-tensor this))
+  (->native-buffer [this] (-> (dtype-proto/as-tensor this)
+                              (dtype-proto/->native-buffer)))
   Object
   (toString [this]
     (jl-obj->str handle)))
