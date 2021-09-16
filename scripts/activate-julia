@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [ ! -e julia-1.6.2 ]; then
+   wget https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz
+   tar -xvzf julia-1.6.2-linux-x86_64.tar.gz
+fi
+
+export JULIA_HOME=$(pwd)/julia-1.6.2
+export PATH=$PATH:$JULIA_HOME/bin
