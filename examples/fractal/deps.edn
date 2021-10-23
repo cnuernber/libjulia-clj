@@ -1,1 +1,2 @@
-{:deps {cnuernber/libjulia-clj         {:mvn/version "0.07"}}}
+{:paths ["src"]
+ :deps {cnuernber/libjulia-clj         {:mvn/version "0.07"}}}
