@@ -1,26 +1,25 @@
 (ns libjulia-clj.impl.base
-  (:require [tech.v3.jna :as jna]
-            [tech.v3.jna.base :as jna-base]
-            [tech.v3.datatype :as dtype]
+  (:require [tech.v3.datatype :as dtype]
+            [tech.v3.datatype.ffi :as dt-ffi]
+            [tech.v3.datatype.ffi.size-t :as ffi-size-t]
+            [tech.v3.datatype.ffi.ptr-value :as ffi-ptr-value]
             [tech.v3.datatype.protocols :as dtype-proto]
             [tech.v3.datatype.errors :as errors]
             [tech.v3.datatype.casting :as casting]
             [tech.v3.datatype.pprint :as dtype-pp]
             [tech.v3.datatype.native-buffer :as native-buffer]
-            [tech.v3.datatype.jna]
             [tech.v3.tensor.dimensions.analytics :as dims-analytics]
             [tech.v3.tensor :as dtt]
             [tech.v3.resource :as resource]
             [libjulia-clj.impl.gc :as gc]
-            [libjulia-clj.impl.jna :as julia-jna]
+            [libjulia-clj.impl.ffi :as julia-ffi]
             [libjulia-clj.impl.protocols :as julia-proto]
-            [primitive-math :as pmath]
+            [com.github.ztellman.primitive-math :as pmath]
             [clojure.tools.logging :as log])
-  (:import [com.sun.jna Pointer NativeLibrary CallbackReference]
+  (:import [tech.v3.datatype.ffi Pointer]
            [java.nio.file Paths]
            [java.util Map Iterator NoSuchElementException]
-           [clojure.lang IFn Symbol Keyword]
-           [libjulia_clj JLFunction])
+           [clojure.lang IFn Symbol Keyword])
   (:refer-clojure :exclude [struct]))
 
 
@@ -38,10 +37,10 @@
   (errors/when-not-error
    (nil? @jvm-julia-roots*)
    "Attempt to initialize julia root map twice")
-  (let [refmap (julia-jna/jl_eval_string "jvm_refs = IdDict()")
-        set-index! (julia-jna/jl_get_function (julia-jna/jl_base_module) "setindex!")
-        delete! (julia-jna/jl_get_function (julia-jna/jl_base_module) "delete!")
-        haskey (julia-jna/jl_get_function (julia-jna/jl_base_module) "haskey")]
+  (let [refmap (julia-ffi/jl_eval_string "jvm_refs = IdDict()")
+        set-index! (julia-ffi/jl_get_function (julia-ffi/jl_base_module) "setindex!")
+        delete! (julia-ffi/jl_get_function (julia-ffi/jl_base_module) "delete!")
+        haskey (julia-ffi/jl_get_function (julia-ffi/jl_base_module) "haskey")]
     (reset! jvm-julia-roots*
             {:jvm-refs refmap
              :set-index! set-index!
@@ -55,28 +54,28 @@
   Defaults to :auto track type"
   ([^Pointer value options]
    (when-not (or (:unrooted? options)
-                 (== 0 (julia-jna/jl_gc_is_enabled)))
+                 (== 0 (julia-ffi/jl_gc_is_enabled)))
      (let [{:keys [jvm-refs set-index! delete! haskey]} @jvm-julia-roots*
-           native-value (Pointer/nativeValue value)
+           native-value (.address value)
            untracked-value (Pointer. native-value)
            ;;Eventually we will turn off default logging...
            log-level (:log-level options @julia-gc-root-log-level*)]
        ;;We do not root pointers twice; that could cause a crash when
        ;;dereferencing
        (if-not (julia-proto/julia->jvm
-                (julia-jna/jl_call2 haskey jvm-refs untracked-value)
+                (julia-ffi/jl_call2 haskey jvm-refs untracked-value)
                 {})
          (do
            (when log-level
              (log/logf log-level "Rooting address  0x%016X - %s"
-                       native-value (julia-jna/jl-ptr->typename value)))
-           (julia-jna/jl_call3 set-index! jvm-refs untracked-value value)
+                       native-value (julia-ffi/jl-ptr->typename value)))
+           (julia-ffi/jl_call3 set-index! jvm-refs untracked-value value)
            (gc/track value (fn []
                              (when log-level
                                (log/logf log-level
                                          "Unrooting address 0x%016X"
                                          native-value))
-                             (julia-jna/jl_call2 delete! jvm-refs untracked-value))))
+                             (julia-ffi/jl_call2 delete! jvm-refs untracked-value))))
          ;;already rooted
          value))))
   ([value]
@@ -96,32 +95,32 @@
 
 (defn initialize-module-functions!
   []
-  (let [basemod (julia-jna/jl_base_module)
-        coremod (julia-jna/jl_core_module)]
+  (let [basemod (julia-ffi/jl_base_module)
+        coremod (julia-ffi/jl_core_module)]
     (reset! module-functions*
-            {:sprint (julia-jna/jl_get_function basemod "sprint")
-             :showerror (julia-jna/jl_get_function basemod "showerror")
-             :catch-backtrace (julia-jna/jl_get_function basemod "catch_backtrace")
-             :dump (julia-jna/jl_get_function basemod "dump")
-             :print (julia-jna/jl_get_function basemod "print")
-             :methods (julia-jna/jl_get_function basemod "methods")
-             :length (julia-jna/jl_get_function basemod "length")
-             :names (julia-jna/jl_get_function basemod "names")
-             :kwfunc (julia-jna/jl_get_function coremod "kwfunc")
-             :isempty (julia-jna/jl_get_function basemod "isempty")
-             :setindex! (julia-jna/jl_get_function basemod "setindex!")
-             :getindex (julia-jna/jl_get_function basemod "getindex")
-             :fieldnames (julia-jna/jl_get_function basemod "fieldnames")
-             :getfield (julia-jna/jl_get_function basemod "getfield")
-             :keys (julia-jna/jl_get_function basemod "keys")
-             :values (julia-jna/jl_get_function basemod "values")
-             :haskey (julia-jna/jl_get_function basemod "haskey")
-             :get (julia-jna/jl_get_function basemod "get")
-             :append! (julia-jna/jl_get_function basemod "append!")
-             :delete! (julia-jna/jl_get_function basemod "delete!")
-             :iterate (julia-jna/jl_get_function basemod "iterate")
-             :pairs (julia-jna/jl_get_function basemod "pairs")
-             :eltype (julia-jna/jl_get_function basemod "eltype")})))
+            {:sprint (julia-ffi/jl_get_function basemod "sprint")
+             :showerror (julia-ffi/jl_get_function basemod "showerror")
+             :catch-backtrace (julia-ffi/jl_get_function basemod "catch_backtrace")
+             :dump (julia-ffi/jl_get_function basemod "dump")
+             :print (julia-ffi/jl_get_function basemod "print")
+             :methods (julia-ffi/jl_get_function basemod "methods")
+             :length (julia-ffi/jl_get_function basemod "length")
+             :names (julia-ffi/jl_get_function basemod "names")
+             :kwfunc (julia-ffi/jl_get_function coremod "kwfunc")
+             :isempty (julia-ffi/jl_get_function basemod "isempty")
+             :setindex! (julia-ffi/jl_get_function basemod "setindex!")
+             :getindex (julia-ffi/jl_get_function basemod "getindex")
+             :fieldnames (julia-ffi/jl_get_function basemod "fieldnames")
+             :getfield (julia-ffi/jl_get_function basemod "getfield")
+             :keys (julia-ffi/jl_get_function basemod "keys")
+             :values (julia-ffi/jl_get_function basemod "values")
+             :haskey (julia-ffi/jl_get_function basemod "haskey")
+             :get (julia-ffi/jl_get_function basemod "get")
+             :append! (julia-ffi/jl_get_function basemod "append!")
+             :delete! (julia-ffi/jl_get_function basemod "delete!")
+             :iterate (julia-ffi/jl_get_function basemod "iterate")
+             :pairs (julia-ffi/jl_get_function basemod "pairs")
+             :eltype (julia-ffi/jl_get_function basemod "eltype")})))
 
 
 (defn module-fn
@@ -135,14 +134,14 @@
   ^String [exc]
   (when exc
     (let [{:keys [sprint showerror catch-backtrace]} @module-functions*
-          bt (julia-jna/jl_call0 catch-backtrace)]
-      (-> (julia-jna/jl_call3 sprint showerror exc bt)
+          bt (julia-ffi/jl_call0 catch-backtrace)]
+      (-> (julia-ffi/jl_call3 sprint showerror exc bt)
           (julia-proto/julia->jvm nil)))))
 
 
 (defn check-last-error
   []
-  (when-let [exc (julia-jna/jl_exception_occurred)]
+  (when-let [exc (julia-ffi/jl_exception_occurred)]
     (errors/throwf "Julia error:\n%s" (or (sprint-last-error exc)
                                           "unable to print error"))))
 
@@ -151,7 +150,7 @@
   ^String [jl-ptr]
   (when jl-ptr
     (let [{:keys [sprint print]} @module-functions*]
-      (-> (julia-jna/jl_call2 sprint print jl-ptr)
+      (-> (julia-ffi/jl_call2 sprint print jl-ptr)
           (julia-proto/julia->jvm nil)))))
 
 
@@ -183,51 +182,29 @@
      optimizations."
   ([{:keys [julia-library-path]
      :as options}]
-   (let [julia-library-path (cond
-                              (not (nil? julia-library-path))
-                              julia-library-path
-                              (not-empty (System/getenv "JULIA_LIBRARY_PATH"))
-                              (System/getenv "JULIA_LIBRARY_PATH")
-                              (not-empty (System/getenv "JULIA_HOME"))
-                              (apply combine-paths (System/getenv "JULIA_HOME")
-                                     (if (windows-os?)
-                                       ["bin" (System/mapLibraryName "libjulia")]
-                                       ["lib" (System/mapLibraryName "julia")]))
-                              :else
-                              (if windows-os?
-                                "libjulia"
-                                "julia"))]
-     (try
-       (log/infof "Attempting to initialize Julia at %s" julia-library-path)
-       (jna-base/load-library julia-library-path)
-       (reset! julia-jna/julia-library-path* julia-library-path)
-       (when-not (== 1 (julia-jna/jl_is_initialized))
-         ;;The JVM uses SIGSEGV signals during it's normal course of
-         ;;operation.  Without disabling Julia's signal handling  this will
-         ;;cause an instantaneous and unceremonious exit :-).
-         (julia-jna/disable-julia-signals! options)
-         (julia-jna/jl_init__threading)
-         (julia-jna/initialize-typemap!)
-         (julia-jna/setup-direct-mapping!)
-         (initialize-julia-root-map!)
-         (initialize-module-functions!))
-       (catch Throwable e
-         (throw (ex-info (format "Failed to find julia library.  Is JULIA_HOME unset?  Attempted %s"
-                                 julia-library-path)
-                         {:error e})))))
+   (julia-ffi/initialize! options)
+   (reset! julia-ffi/julia-library-path* julia-library-path)
+   (when-not (== 1 (julia-ffi/jl_is_initialized))
+     ;;The JVM uses SIGSEGV signals during it's normal course of
+     ;;operation.  Without disabling Julia's signal handling  this will
+     ;;cause an instantaneous and unceremonious exit :-).
+     (julia-ffi/init-process-options options)
+     (julia-ffi/jl_init__threading)
+     (initialize-julia-root-map!)
+     (initialize-module-functions!))
    :ok)
   ([]
    (initialize! nil)))
 
 
-(def ptr-dtype (jna/size-t-compile-time-switch :int32 :int64))
+(def ptr-dtype (ffi-size-t/lower-ptr-type :pointer))
 
 
 (defn module-symbol-names
   [module]
   (let [names-fn (:names @module-functions*)
-        names-ary (julia-jna/jl_call1 names-fn module)
-        ary-data (native-buffer/wrap-address (Pointer/nativeValue names-ary)
+        names-ary (julia-ffi/jl_call1 names-fn module)
+        ary-data (native-buffer/wrap-address (ffi-ptr-value/ptr-value names-ary)
                                              16 ptr-dtype :little-endian nil)
         data-ptr (ary-data 0)
         ;;If julia is compiled with STORE_ARRAY_LENGTH
@@ -238,7 +215,7 @@
                                          ptr-dtype :little-endian nil)]
     (-> (dtype/emap (fn [^long sym-data]
                       (-> (Pointer. sym-data)
-                          (julia-jna/jl_symbol_name)))
+                          (julia-ffi/jl_symbol_name)))
                     :string data)
         (dtype/clone))))
 
@@ -246,9 +223,9 @@
 (deftype GenericJuliaObject [^Pointer handle gc-obj]
   julia-proto/PToJulia
   (->julia [item] handle)
-  jna/PToPtr
-  (is-jna-ptr-convertible? [this] true)
-  (->ptr-backing-store [this] handle)
+  dt-ffi/PToPointer
+  (convertible-to-pointer? [this] true)
+  (->pointer [this] handle)
   Object
   (toString [this]
     (jl-obj->str handle)))
@@ -293,9 +270,9 @@
      (->julia [item] ~'handle)
      julia-proto/PJuliaKWFn
      (kw-fn [item] ~'kw-fn-handle)
-     jna/PToPtr
-     (is-jna-ptr-convertible? [this#] true)
-     (->ptr-backing-store [this#] ~'handle)
+     dt-ffi/PToPointer
+     (convertible-to-pointer? [this#] true)
+     (->pointer [this#] ~'handle)
      Object
      (toString [this]
        (jl-obj->str ~'handle))
@@ -361,79 +338,79 @@
 
 (extend-protocol julia-proto/PToJulia
   Boolean
-  (->julia [item] (julia-jna/jl_box_bool (if item 1 0)))
+  (->julia [item] (julia-ffi/jl_box_bool (if item 1 0)))
   Byte
-  (->julia [item] (julia-jna/jl_box_int8 item))
+  (->julia [item] (julia-ffi/jl_box_int8 item))
   Short
-  (->julia [item] (julia-jna/jl_box_int16 item))
+  (->julia [item] (julia-ffi/jl_box_int16 item))
   Integer
-  (->julia [item] (julia-jna/jl_box_int32 item))
+  (->julia [item] (julia-ffi/jl_box_int32 item))
   Long
-  (->julia [item] (julia-jna/jl_box_int64 item))
+  (->julia [item] (julia-ffi/jl_box_int64 item))
   Float
-  (->julia [item] (julia-jna/jl_box_float32 item))
+  (->julia [item] (julia-ffi/jl_box_float32 item))
   Double
-  (->julia [item] (julia-jna/jl_box_float64 item))
+  (->julia [item] (julia-ffi/jl_box_float64 item))
   String
-  (->julia [item] (julia-jna/jl_cstr_to_string item))
+  (->julia [item] (julia-ffi/jl_cstr_to_string item))
   Symbol
-  (->julia [item] (julia-jna/jl_symbol (name item)))
+  (->julia [item] (julia-ffi/jl_symbol (name item)))
   Keyword
-  (->julia [item] (julia-jna/jl_symbol (name item)))
+  (->julia [item] (julia-ffi/jl_symbol (name item)))
   Pointer
   (->julia [item] item))
 
 (defmethod julia-proto/julia->jvm :boolean
   [julia-val options]
-  (if (== 0 (julia-jna/jl_unbox_bool julia-val))
+  (if (== 0 (julia-ffi/jl_unbox_bool julia-val))
     false
     true))
 
 
 (defmethod julia-proto/julia->jvm :uint8
   [julia-val options]
-  (pmath/byte->ubyte (julia-jna/jl_unbox_uint8 julia-val)))
+  (pmath/byte->ubyte (julia-ffi/jl_unbox_uint8 julia-val)))
 
 (defmethod julia-proto/julia->jvm :uint16
   [julia-val options]
-  (pmath/short->ushort (julia-jna/jl_unbox_uint16 julia-val)))
+  (pmath/short->ushort (julia-ffi/jl_unbox_uint16 julia-val)))
 
 (defmethod julia-proto/julia->jvm :uint32
   [julia-val options]
-  (pmath/int->uint (julia-jna/jl_unbox_uint32 julia-val)))
+  (pmath/int->uint (julia-ffi/jl_unbox_uint32 julia-val)))
 
 (defmethod julia-proto/julia->jvm :uint64
   [julia-val options]
-  (julia-jna/jl_unbox_uint64 julia-val))
+  (julia-ffi/jl_unbox_uint64 julia-val))
 
 
 (defmethod julia-proto/julia->jvm :int8
   [julia-val options]
-  (julia-jna/jl_unbox_int8 julia-val))
+  (julia-ffi/jl_unbox_int8 julia-val))
 
 (defmethod julia-proto/julia->jvm :int16
   [julia-val options]
-  (julia-jna/jl_unbox_int16 julia-val))
+  (julia-ffi/jl_unbox_int16 julia-val))
 
 (defmethod julia-proto/julia->jvm :int32
   [julia-val options]
-  (julia-jna/jl_unbox_int32 julia-val))
+  (julia-ffi/jl_unbox_int32 julia-val))
 
 (defmethod julia-proto/julia->jvm :int64
   [julia-val options]
-  (julia-jna/jl_unbox_int64 julia-val))
+  (julia-ffi/jl_unbox_int64 julia-val))
 
 (defmethod julia-proto/julia->jvm :float64
   [julia-val options]
-  (julia-jna/jl_unbox_float64 julia-val))
+  (julia-ffi/jl_unbox_float64 julia-val))
 
 (defmethod julia-proto/julia->jvm :float32
   [julia-val options]
-  (julia-jna/jl_unbox_float32 julia-val))
+  (julia-ffi/jl_unbox_float32 julia-val))
 
 (defmethod julia-proto/julia->jvm :string
   [julia-val options]
-  (julia-jna/jl_string_ptr julia-val))
+  (julia-ffi/jl_string_ptr julia-val))
 
 (defmethod julia-proto/julia->jvm :jl-nothing-type
   [julia-val options]
@@ -444,13 +421,13 @@
   [args]
   (mapv #(if %
            (julia-proto/->julia %)
-           (julia-jna/jl_nothing)) args))
+           (julia-ffi/jl_nothing)) args))
 
 
-(defn lookup-julia-type
+#_(defn lookup-julia-type
   "Lookup a julia type from a clojure type keyword."
   [clj-type-kwd]
-  (if-let [retval (get-in @julia-jna/julia-typemap* [:typename->typeid clj-type-kwd])]
+  (if-let [retval (get-in @julia-ffi/julia-typemap* [:typename->typeid clj-type-kwd])]
     (julia-proto/julia->jvm retval {:unrooted? true})
     (errors/throwf "Failed to find julia type %s" clj-type-kwd)))
 
@@ -458,15 +435,14 @@
 (defn jvm-args->julia-types
   [args]
   (mapv #(if %
-           (if (keyword? %) (lookup-julia-type %)
-               (julia-proto/->julia %))
-           (julia-jna/jl_nothing))
+           (julia-proto/->julia %)
+           (julia-ffi/jl_nothing))
         args))
 
 
 (defn jvm-args->julia-symbols
   [args]
-  (mapv #(cond (string? %) (julia-jna/jl_symbol %)
+  (mapv #(cond (string? %) (julia-ffi/jl_symbol %)
                (or (keyword? %) (symbol? %)) (julia-proto/->julia %)
                :else (errors/throwf "%s is not convertible to a julia symbol" %))
         args))
@@ -479,22 +455,22 @@
   ^Pointer [fn-handle args]
   (resource/stack-resource-context
    ;;do not GC my stuff when I am marshalling function arguments to julia
-   (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))]
+   (let [jl-args (julia-ffi/with-disabled-julia-gc (jvm-args->julia args))]
      (let [retval
            (case (count jl-args)
-             0 (julia-jna/jl_call0 fn-handle)
-             1 (julia-jna/jl_call1 fn-handle (first jl-args))
-             2 (julia-jna/jl_call2 fn-handle (first jl-args) (second jl-args))
-             3 (apply julia-jna/jl_call3 fn-handle jl-args)
+             0 (julia-ffi/jl_call0 fn-handle)
+             1 (julia-ffi/jl_call1 fn-handle (first jl-args))
+             2 (julia-ffi/jl_call2 fn-handle (first jl-args) (second jl-args))
+             3 (apply julia-ffi/jl_call3 fn-handle jl-args)
              (let [n-args (count args)
                    ;;This will be cleaned up when the resource stack context unwraps.
                    ptr-buf (dtype/make-container :native-heap ptr-dtype
                                                  {:resource-type :stack}
                                                  (mapv #(if %
-                                                          (Pointer/nativeValue ^Pointer %)
+                                                          (ffi-ptr-value/ptr-value %)
                                                           0)
                                                        jl-args))]
-               (julia-jna/jl_call fn-handle ptr-buf n-args)))]
+               (julia-ffi/jl_call fn-handle ptr-buf n-args)))]
        (check-last-error)
        retval))))
 
@@ -513,15 +489,15 @@
   "Create a new Julia tuple type from a sequence of types."
   ^Pointer [args & [options]]
   (resource/stack-resource-context
-   (let [jl-args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
+   (let [jl-args (julia-ffi/with-disabled-julia-gc (jvm-args->julia-types args))
          n-args (count args)
          ptr-buf (dtype/make-container :native-heap ptr-dtype
                                        {:resource-type :stack}
                                        (mapv #(if %
-                                                (Pointer/nativeValue ^Pointer %)
+                                                (ffi-ptr-value/ptr-value %)
                                                 0)
                                              jl-args))
-         retval (julia-jna/jl_apply_tuple_type_v ptr-buf n-args)]
+         retval (julia-ffi/jl_apply_tuple_type_v ptr-buf n-args)]
      (check-last-error)
      (julia-proto/julia->jvm retval options))))
 
@@ -531,20 +507,20 @@
   types."
   ^Pointer [jl-type args]
   (resource/stack-resource-context
-   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia-types args))
+   (let [args (julia-ffi/with-disabled-julia-gc (jvm-args->julia-types args))
          retval
          (case (count args)
-           1 (julia-jna/jl_apply_type1 jl-type (first args))
-           2 (julia-jna/jl_apply_type2 jl-type (first args) (second args))
+           1 (julia-ffi/jl_apply_type1 jl-type (first args))
+           2 (julia-ffi/jl_apply_type2 jl-type (first args) (second args))
            (let [n-args (count args)
                  ptr-buf (dtype/make-container
                           :native-heap ptr-dtype
                           {:resource-type :stack}
                           (mapv #(if %
-                                   (Pointer/nativeValue ^Pointer %)
+                                   (ffi-ptr-value/ptr-value %)
                                    0)
                                 args))]
-             (julia-jna/jl_apply_type jl-type ptr-buf n-args)))]
+             (julia-ffi/jl_apply_type jl-type ptr-buf n-args)))]
      (check-last-error)
      (julia-proto/julia->jvm retval nil))))
 
@@ -554,15 +530,15 @@
   apply-tuple-type in order to create an instance of your new type."
   ^Pointer [jl-type args]
   (resource/stack-resource-context
-   (let [args (julia-jna/with-disabled-julia-gc (jvm-args->julia args))
+   (let [args (julia-ffi/with-disabled-julia-gc (jvm-args->julia args))
          n-args (count args)
          ptr-buf (dtype/make-container :native-heap ptr-dtype
                                        {:resource-type :stack}
                                        (mapv #(if %
-                                                (Pointer/nativeValue ^Pointer %)
+                                                (ffi-ptr-value/ptr-value %)
                                                 0)
                                              args))
-         retval (julia-jna/jl_new_structv jl-type ptr-buf n-args)]
+         retval (julia-ffi/jl_new_structv jl-type ptr-buf n-args)]
      (check-last-error)
      (julia-proto/julia->jvm retval nil))))
 
@@ -576,10 +552,10 @@
   the given newly created tuple type."
   [args]
   (let [[jl-args tuple-type]
-        (julia-jna/with-disabled-julia-gc
+        (julia-ffi/with-disabled-julia-gc
           (let [jl-args (jvm-args->julia args)]
             [jl-args
-             (apply-tuple-type (map julia-jna/jl_typeof jl-args))]))]
+             (apply-tuple-type (map julia-ffi/jl_typeof jl-args))]))]
     (struct tuple-type jl-args)))
 
 
@@ -587,13 +563,13 @@
   "Create a julia named tuple from a map of values.  The keys of the map must be
   keywords or symbols.  A new named tuple type will be created and instantiated."
   ([value-map]
-   (let [generic-nt-type (lookup-julia-type :jl-namedtuple-type)
+   (let [generic-nt-type (julia-ffi/lookup-library-type :jl-namedtuple-type)
          [jl-values nt-type]
-         (julia-jna/with-disabled-julia-gc
+         (julia-ffi/with-disabled-julia-gc
            (let [item-keys (tuple (jvm-args->julia-symbols (keys value-map)))
                  map-vals (vals value-map)
                  jl-values (jvm-args->julia map-vals)
-                 item-type-tuple (apply-tuple-type (map julia-jna/jl_typeof jl-values))
+                 item-type-tuple (apply-tuple-type (map julia-ffi/jl_typeof jl-values))
                  nt-type (apply-type generic-nt-type [item-keys item-type-tuple])]
              [jl-values nt-type]))]
      (check-last-error)
@@ -616,7 +592,7 @@
   you."
   ([fn-handle args kw-args options]
    (call-function (julia-proto/kw-fn fn-handle)
-                  (concat [(julia-jna/with-disabled-julia-gc
+                  (concat [(julia-ffi/with-disabled-julia-gc
                              (kw-args->named-tuple kw-args))
                            fn-handle]
                           args)
@@ -634,10 +610,10 @@
   [module]
   (->> (module-symbol-names module)
        (map (fn [sym-name]
-              (let [global-sym (julia-jna/jl_get_function module sym-name)]
+              (let [global-sym (julia-ffi/jl_get_function module sym-name)]
                 (when global-sym
                   [(symbol sym-name)
-                   {:symbol-type (julia-jna/jl-ptr->typename global-sym)
+                   {:symbol-type (julia-ffi/jl-ptr->typename global-sym)
                     :symbol global-sym}]))))
        (remove nil?)
        (sort-by first)))
@@ -645,11 +621,11 @@
 
 (defmacro define-module-publics
   [module-name unsafe-name-map]
-  (if-let [mod (julia-jna/jl_eval_string module-name)]
+  (if-let [mod (julia-ffi/jl_eval_string module-name)]
     (let [publics (module-publics mod)
-          docs-fn (julia-jna/jl_eval_string "Base.Docs.doc")]
+          docs-fn (julia-ffi/jl_eval_string "Base.Docs.doc")]
       `(do
-         (def ~'module (julia-jna/jl_eval_string ~module-name))
+         (def ~'module (julia-ffi/jl_eval_string ~module-name))
          ~@(->> publics
                 (map (fn [[sym {jl-symbol :symbol}]]
                        (when jl-symbol
@@ -663,7 +639,7 @@
                                       {:doc docs})
                                 (try
                                   (julia-proto/julia->jvm
-                                   (julia-jna/jl_get_function ~'module ~sym-rawname)
+                                   (julia-ffi/jl_get_function ~'module ~sym-rawname)
                                    {:unrooted? true})
                                   (catch Exception e#
                                     (log/warnf e# "Julia symbol %s(%s) will be unavailable"
@@ -676,18 +652,18 @@
 
 (defn julia-array->nd-descriptor
   [ary-ptr]
-  (let [rank (julia-jna/jl_array_rank ary-ptr)
+  (let [rank (julia-ffi/jl_array_rank ary-ptr)
         shape (vec (reverse
-                    (map #(julia-jna/jl_array_size ary-ptr %)
+                    (map #(julia-ffi/jl_array_size ary-ptr %)
                          (range rank))))
-        data (julia-jna/jl_array_ptr ary-ptr)
-        dtype (-> (julia-jna/jl_array_eltype ary-ptr)
-                  (julia-jna/julia-eltype->datatype))
+        data (julia-ffi/jl_array_ptr ary-ptr)
+        dtype (-> (julia-ffi/jl_array_eltype ary-ptr)
+                  (julia-ffi/julia-eltype->datatype))
         byte-width (casting/numeric-byte-width dtype)
         ;;TODO - Figure out to handle non-packed data.  This is a start, however.
         strides (->> (dims-analytics/shape-ary->strides shape)
                      (mapv #(* byte-width (long %))))]
-    {:ptr (Pointer/nativeValue data)
+    {:ptr (ffi-ptr-value/ptr-value data)
      :elemwise-datatype dtype
      :shape shape
      :strides strides
@@ -697,17 +673,17 @@
 (deftype JuliaArray [^Pointer handle]
   julia-proto/PToJulia
   (->julia [item] handle)
-  jna/PToPtr
-  (is-jna-ptr-convertible? [this] true)
-  (->ptr-backing-store [this] handle)
+  dt-ffi/PToPointer
+  (convertible-to-pointer? [item] true)
+  (->pointer [this] handle)
   dtype-proto/PElemwiseDatatype
   (elemwise-datatype [this]
-    (-> (julia-jna/jl_array_eltype handle)
-        (julia-jna/julia-eltype->datatype)))
+    (-> (julia-ffi/jl_array_eltype handle)
+        (julia-ffi/julia-eltype->datatype)))
   dtype-proto/PShape
   (shape [this]
-    (let [rank (julia-jna/jl_array_rank handle)]
-      (mapv #(julia-jna/jl_array_size handle %)
+    (let [rank (julia-ffi/jl_array_rank handle)]
+      (mapv #(julia-ffi/jl_array_size handle %)
             (reverse (range rank)))))
   dtype-proto/PECount
   (ecount [this]
@@ -800,40 +776,41 @@
                        (module-fn :getindex first-tuple 1))
           (JLIterator. jl-obj nil nil))))))
 
+(def comp-iface-def (dt-ffi/define-foreign-interface :int32 [:pointer :pointer]))
+
 
 (defn fn->jl
   "Convert a clojure function to a Julia void-ptr."
   ([clj-fn {:keys [no-coerce?] :as options}]
-   (errors/when-not-errorf (or (instance? IFn clj-fn)
-                               (instance? JLFunction clj-fn))
+   (errors/when-not-errorf (instance? IFn clj-fn)
      "Item %s is not an instance of IFn"
      clj-fn)
-   (let [^JLFunction clj-fn
-         (if (instance? JLFunction clj-fn)
-           clj-fn
-           (reify JLFunction
-             (jlinvoke [this args]
-               (try
-                 (let [retval (if no-coerce?
-                                (clj-fn args)
-                                (apply clj-fn (julia-proto/julia->jvm
-                                               args options)))]
-                   ;;Explicit nil check so we can return booleans.
-                   (if (nil? retval)
-                     (julia-jna/jl_nothing)
-                     (julia-proto/->julia retval)))
-                 (catch Throwable e
-                   (log/warnf e "Clojure fn errored during julia call")
-                   (julia-jna/jl_nothing))))))
-         fn-ptr (CallbackReference/getFunctionPointer clj-fn)]
-     (julia-proto/julia->jvm (julia-jna/jl_box_voidpointer fn-ptr)
+   (let [inst
+         (dt-ffi/instantiate-foreign-interface
+          comp-iface-def
+          (if no-coerce?
+            clj-fn
+            (fn [jl-args]
+              (try
+                (let [retval (apply clj-fn (julia-proto/julia->jvm
+                                            jl-args options))]
+                  ;;Explicit nil check so we can return booleans.
+                  (if (nil? retval)
+                    (julia-ffi/jl_nothing)
+                    (julia-proto/->julia retval)))
+                (catch Throwable e
+                  (log/warnf e "Clojure fn errored during julia call")
+                  (julia-ffi/jl_nothing))))))
+
+         fn-ptr (dt-ffi/foreign-interface-instance->c comp-iface-def inst)]
+     (julia-proto/julia->jvm (julia-ffi/jl_box_voidpointer fn-ptr)
                              {:gc-obj [clj-fn fn-ptr]})))
   ([clj-fn]
    (fn->jl clj-fn nil)))
 
 
 (def fn-wrapper* (delay (->
-                         (julia-jna/jl_eval_string "function(fn_ptr::Ptr{Nothing}) return function(a...) return ccall(fn_ptr, Any, (Any,), a) end end")
+                         (julia-ffi/jl_eval_string "function(fn_ptr::Ptr{Nothing}) return function(a...) return ccall(fn_ptr, Any, (Any,), a) end end")
                          (julia-proto/julia->jvm nil))))
 
 ;;Object default protocol implementation

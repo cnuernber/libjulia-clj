@@ -2,19 +2,32 @@
   "Low level raw JNA bindings and some basic initialization facilities"
   (:require [tech.v3.datatype.pprint :as dtype-pp]
             [tech.v3.datatype.ffi :as dt-ffi]
+            [tech.v3.datatype.ffi.size-t :as ffi-size-t]
+            [tech.v3.datatype.ffi.ptr-value :as ffi-ptr-value]
             [tech.v3.datatype.errors :as errors]
+            [tech.v3.datatype.native-buffer :as native-buffer]
+            [tech.v3.datatype.casting :as casting]
+            [tech.v3.datatype :as dt]
+            [tech.v3.datatype.jvm-map :as jvm-map]
+            [tech.v3.resource :as resource]
             [camel-snake-kebab.core :as csk]
             [clojure.string :as s]
             [clojure.set :as set]
             [clojure.tools.logging :as log]))
 
 
+(set! *warn-on-reflection* true)
+
 
 (defonce julia-library-path* (atom "julia"))
 
 
 (def julia-fns-def
-  {:jl_init__threading {:rettype :void
+  {:jl_parse_opts {:rettype :void
+                   :argtypes [['argcp :pointer]
+                              ['argvp :pointer]]
+                   :doc "parse argc/argv pair"}
+   :jl_init__threading {:rettype :void
                         :doc "Initialize julia"}
    :jl_is_initialized {:rettype :int32
                        :doc "Returns 1 if julia is initialized, 0 otherwise"}
@@ -30,8 +43,8 @@
    :jl_typeof_str {:rettype :string
                    :argtypes [['v :pointer]]
                    :doc "Return the type of an object as a string"}
-   :jl_exception_occured {:rettype :pointer?
-                          :doc "Return the current in-flight exception or nil"}
+   :jl_exception_occurred {:rettype :pointer?
+                           :doc "Return the current in-flight exception or nil"}
    :jl_symbol {:rettype :pointer
                :argtypes [['symbol-name :string]]
                :doc "Create a julia symbol from a string"}
@@ -258,7 +271,11 @@
   [lib-instance]
   (dt-ffi/library-singleton-set-instance! julia lib-instance))
 
+
 (defn initialize!
+  "Load the libjulia library.  This does no further initialization, so it is necessary
+  to the call 'init-process-options' and then 'jl_init__threading' at which point
+  'jl_is_initialized' should be true."
   [& [options]]
   (let [jh (or (:julia-home options) (System/getenv "JULIA_HOME"))
         _ (errors/when-not-errorf jh "JULIA_HOME unset")
@@ -269,7 +286,8 @@
     (errors/when-not-errorf (.exists (java.io.File. jpath))
                             "Julia shared library not found at path %s
 - is JULIA_HOME set incorrectly?", jpath)
-    (dt-ffi/library-singleton-set! julia jpath)))
+    (dt-ffi/library-singleton-set! julia jpath)
+    :ok))
 
 (defn find-fn [fn-name] (dt-ffi/library-singleton-find-fn julia fn-name))
 
@@ -286,17 +304,57 @@
   (jl_get_global module (jl_symbol fn-name)))
 
 
+(defn native-addr
+  ^long [data]
+  (-> (dt/as-native-buffer data)
+      (.address)))
+
+
+(defn init-process-options
+  "Must be called before jl_init__threading.
+
+  Options are:
+  * `:enable-signals?` - true to enable julia signal handling.  If false you must disable
+     threads (set n-threads to 1).  If using signals you must preload libjsig.so - see
+     documentation.  Defaults to false.
+  * `:n-threads` - Set the number of threads to use with julia.   Defaults to `:auto` unless
+     signals are disabled."
+  [& [{:keys [enable-signals? n-threads]
+       :or {enable-signals? false}}]]
+  (resource/stack-resource-context
+   (let [n-threads (if enable-signals?
+                     (or n-threads :auto)
+                     1)
+         opt-strs [(format "--handle-signals=%s" (if enable-signals? "yes" "no"))
+                   "--threads" (str n-threads)]
+         ptr-type (ffi-size-t/lower-ptr-type :pointer)
+         str-ptrs (mapv (comp native-addr dt-ffi/string->c) opt-strs)
+         argv (dt/make-container :native-heap ptr-type str-ptrs)
+         argvp (dt/make-container :native-heap ptr-type [(native-addr argv)])
+         argcp (dt/make-container :native-heap ptr-type [(count opt-strs)])]
+     (log/infof "julia library arguments: %s" opt-strs)
+     (jl_parse_opts argcp argvp)
+     (argcp 0))))
+
+(defonce julia-symbols (jvm-map/concurrent-hash-map))
+
 (defn find-julia-symbol
-  [sym-name]
-  #_(.getGlobalVariableAddress ^NativeLibrary (jna-base/load-library
-                                             @julia-library-path*)
-                               sym-name))
+  ^tech.v3.datatype.ffi.Pointer [sym-name]
+  (jvm-map/compute-if-absent! julia-symbols sym-name
+                              (fn [& args]
+                                (-> (dt-ffi/library-singleton-find-symbol julia sym-name)
+                                    (dt-ffi/->pointer)))))
 
 
 (defn find-deref-julia-symbol
-  [sym-name]
-  #_(-> (find-julia-symbol sym-name)
-      (.getPointer 0)))
+  ^tech.v3.datatype.ffi.Pointer [sym-name]
+  (let [ptr-ptr (-> (find-julia-symbol sym-name)
+                    (.address))
+        buf-dtype (ffi-size-t/lower-ptr-type :pointer)
+        nbuf (native-buffer/wrap-address ptr-ptr (casting/numeric-byte-width buf-dtype)
+                                         buf-dtype :little-endian nil)]
+    ;;deref the ptr
+    (tech.v3.datatype.ffi.Pointer. (nbuf 0))))
 
 
 (defn jl_main_module
@@ -320,99 +378,77 @@
   (find-deref-julia-symbol "jl_nothing"))
 
 
-(defonce julia-typemap* (atom {:typeid->typename {}
-                               :typename->typeid {}}))
-
 (def jl-type->datatype
   {:jl-bool-type :boolean
-   :jl-int-8-type :int8
-   :jl-uint-8-type :uint8
-   :jl-int-16-type :int16
-   :jl-uint-16-type :uint16
-   :jl-int-32-type :int32
-   :jl-uint-32-type :uint32
-   :jl-int-64-type :int64
-   :jl-uint-64-type :uint64
-   :jl-float-32-type :float32
-   :jl-float-64-type :float64
+   :jl-int8-type :int8
+   :jl-uint8-type :uint8
+   :jl-int16-type :int16
+   :jl-uint16-type :uint16
+   :jl-int32-type :int32
+   :jl-uint32-type :uint32
+   :jl-int64-type :int64
+   :jl-uint64-type :uint64
+   :jl-float32-type :float32
+   :jl-float64-type :float64
    :jl-string-type :string
-   :symbol :jl-symbol-type})
+   :jl-symbol-type :symbol})
 
 
 (def datatype->jl-type
   (set/map-invert jl-type->datatype))
 
+(defonce type-ptr->kwd (jvm-map/concurrent-hash-map))
+(defonce kwd->type-ptr (jvm-map/concurrent-hash-map))
 
-#_(defn initialize-typemap!
+(defn add-library-julia-type!
+  ([type-symbol-name clj-kwd]
+   (let [type-ptr (find-deref-julia-symbol type-symbol-name)]
+     (jvm-map/compute-if-absent! type-ptr->kwd type-ptr (constantly clj-kwd))
+     (jvm-map/compute-if-absent! kwd->type-ptr clj-kwd (constantly type-ptr))
+     type-ptr))
+  ([type-symbol-name]
+   (add-library-julia-type! type-symbol-name (keyword type-symbol-name))))
+
+
+(defn initialize-type-map!
   []
-  (let [base-types (->> (list-julia-data-symbols)
-                        (map (comp last #(s/split % #"\s+")))
-                        (filter #(.endsWith ^String % "type"))
-                        (map (fn [typename]
-                               (let [jl-kwd (keyword (csk/->kebab-case typename))]
-                                 [(find-deref-julia-symbol typename)
-                                  (get jl-type->datatype jl-kwd jl-kwd)])))
-                        (into {}))]
-    (swap! julia-typemap*
-           (fn [typemap]
-             (-> typemap
-                 (update :typeid->typename merge base-types)
-                 (update :typename->typeid merge (set/map-invert base-types))))))
+  (doseq [[typename clj-kwd] jl-type->datatype]
+    (add-library-julia-type! (.replace (name typename) "-" "_") clj-kwd))
   :ok)
 
 
-#_(defn jl-ptr->typename
+(defn lookup-library-type
+  [type-kwd]
+  (if-let [retval (get kwd->type-ptr type-kwd)]
+    retval
+    (add-library-julia-type! (.replace (name (get datatype->jl-type type-kwd type-kwd))
+                                       "-" "_") type-kwd)))
+
+
+(defn jl-ptr->typename
   "If the typename is a known typename, return the keyword typename.
   Else return typeof_str."
   [item-ptr]
-  (when (and item-ptr (not= 0 (Pointer/nativeValue item-ptr)))
-    (if-let [retval (get-in @julia-typemap* [:typeid->typename (jl_typeof item-ptr)])]
-      retval
+  (if-let [retval (get type-ptr->kwd item-ptr)]
+    retval
+    (when (not= 0 (ffi-ptr-value/ptr-value? item-ptr))
       (let [^String type-str (jl_typeof_str item-ptr)]
         (if (.startsWith type-str "#")
           :jl-function
           type-str)))))
 
 
-#_(defn julia-eltype->datatype
+(defn julia-eltype->datatype
   [eltype]
-  (get-in @julia-typemap* [:typeid->typename
-                           (jna/->ptr-backing-store eltype)]
-          :object))
+  (get type-ptr->kwd eltype :object))
 
 
-#_(defn julia-options
-  ^JLOptions []
-  (JLOptions. (find-julia-symbol "jl_options")))
-
-
-#_(dtype-pp/implement-tostring-print JLOptions)
-
-
-#_(defn disable-julia-signals!
-  [& [options]]
-  (let [opts (julia-options)
-        n-threads (:n-threads options)
-        signals-enabled? (:signals-enabled? options (not (nil? n-threads)))]
-    (log/infof "Julia startup options: n-threads %d, signals? %s, opt-level %d"
-               n-threads signals-enabled? (:optimization-level options 0))
-    (when-not signals-enabled?
-      (set! (.handle_signals opts) 0)
-      (.writeField opts "handle_signals"))
-    (when-let [n-threads (:n-threads options)]
-      (set! (.nthreads opts) n-threads)
-      (.writeField opts "nthreads"))
-    (when-let [opt-level (:optimization-level options)]
-      (set! (.opt_level opts) (int opt-level))
-      (.writeField opts "opt_level"))))
-
-
-#_(defmacro with-disabled-julia-gc
+(defmacro with-disabled-julia-gc
   "Run a block of code with the julia garbage collector temporarily disabled."
   [& body]
-  `(let [cur-enabled# (julia-jna/jl_gc_is_enabled)]
-     (julia-jna/jl_gc_enable 0)
+  `(let [cur-enabled# (jl_gc_is_enabled)]
+     (jl_gc_enable 0)
      (try
        ~@body
        (finally
-         (julia-jna/jl_gc_enable cur-enabled#)))))
+         (jl_gc_enable cur-enabled#)))))

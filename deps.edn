@@ -1,4 +1,4 @@
 {:paths ["src"]
  :deps {org.clojure/clojure  {:mvn/version "1.10.2" :scope "provided"}
-        cnuernber/dtype-next {:mvn/version "8.034"}
+        cnuernber/dtype-next {:mvn/version "8.037"}
         net.java.dev.jna/jna {:mvn/version "5.9.0"}}}

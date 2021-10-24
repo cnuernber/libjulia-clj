@@ -3,8 +3,7 @@
   Protocols get completely rebound (thus loosing all older bindings)
   when recompiled so it is often a good idea to separate them out into
   their own file."
-  (:require [libjulia-clj.impl.jna :as julia-jna]
-            [tech.v3.datatype.errors :as errors]))
+  (:require [libjulia-clj.impl.ffi :as julia-ffi]))
 
 
 (defprotocol PToJulia
@@ -29,4 +28,4 @@
   * `:gc-obj` - Have the new julia object maintain a reference to this object.  Only
      used for very special cases."
   (fn [julia-val options]
-    (julia-jna/jl-ptr->typename julia-val)))
+    (julia-ffi/jl-ptr->typename julia-val)))

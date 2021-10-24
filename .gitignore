@@ -15,4 +15,4 @@ julia
 openj9
 .cpcache
 *.png
-julia-1.6.2
+julia-1.*
