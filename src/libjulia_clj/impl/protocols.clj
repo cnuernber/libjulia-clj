@@ -20,7 +20,7 @@
 
   Options:
 
-  * `:unrooted?` - defaults to false.  When true, value is not rooted and no thus the
+  * `:unrooted?` - defaults to false.  When true, value is not rooted and thus the
      julia GC may remove the value any point in your program's execution most
      likely resulting in a crash.
   * `:log-level` - When anything at all, jvm-gc<->julia-gc bindings will emit messages
@@ -28,4 +28,5 @@
   * `:gc-obj` - Have the new julia object maintain a reference to this object.  Only
      used for very special cases."
   (fn [julia-val options]
-    (julia-ffi/jl-ptr->typename julia-val)))
+    (let [dispatch (julia-ffi/jl-ptr->typename julia-val)]
+      dispatch)))

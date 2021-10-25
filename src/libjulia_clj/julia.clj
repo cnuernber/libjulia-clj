@@ -44,7 +44,7 @@ user> jl-ary
 ```"
   (:require [libjulia-clj.impl.base :as base]
             [libjulia-clj.impl.protocols :as julia-proto]
-            [libjulia-clj.impl.jna :as julia-jna]
+            [libjulia-clj.impl.ffi :as julia-ffi]
             [libjulia-clj.impl.gc :as julia-gc]
             ;;pure language extensions for now.
             [libjulia-clj.impl.collections]
@@ -57,7 +57,6 @@ user> jl-ary
 
 (export-symbols libjulia-clj.impl.base
                 initialize!
-                lookup-julia-type
                 apply-tuple-type
                 apply-type
                 struct
@@ -69,10 +68,9 @@ user> jl-ary
 
 (defn jl
   "Eval a string in julia returning the result.  If the result is callable in Julia,
-  the result will be callable in Clojure.  Currently one major limit is that you
-  cannot pass a clojure IFn as a Julia callback."
+  the result will be callable in Clojure."
   ([str-data options]
-   (let [retval (julia-jna/jl_eval_string str-data)]
+   (let [retval (julia-ffi/jl_eval_string str-data)]
      (base/check-last-error)
      (julia-proto/julia->jvm retval nil)))
   ([str-data]
@@ -83,7 +81,7 @@ user> jl-ary
   "Get the julia type of an item."
   [item]
   (when item
-    (let [retval (julia-jna/jl_typeof item)]
+    (let [retval (julia-ffi/jl_typeof item)]
       (base/check-last-error)
       (julia-proto/julia->jvm retval nil))))
 
@@ -153,8 +151,8 @@ user> jl-ary
   while tech.v3.datatype is row major, the returned array's size will be the
   reverse of dtype/shape as that keeps the same in memory alignment of data."
   ([shape datatype]
-   (let [jl-dtype (base/lookup-julia-type datatype)
-         ary-type (julia-jna/with-disabled-julia-gc
+   (let [jl-dtype (julia-ffi/lookup-library-type datatype)
+         ary-type (julia-ffi/with-disabled-julia-gc
                     (apply-type @base-ary-type* jl-dtype))]
      (apply ary-type @jl-undef* shape)))
   ([shape]

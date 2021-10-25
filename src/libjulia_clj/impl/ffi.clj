@@ -225,7 +225,7 @@
 
    :jl_apply_tuple_type_v {:doc "Create a new tuple type."
                            :rettype :pointer
-                           :argtypes [['ary :pointer]
+                           :argtypes [['ary :pointer?]
                                       ['d :size-t]]}
 
    :jl_apply_type {:doc "Apply a julia type"
@@ -248,7 +248,7 @@
    :jl_new_structv {:doc "Create a new julia struct from some values"
                     :rettype :pointer
                     :argtypes [['datatype :pointer]
-                               ['args :pointer]
+                               ['args :pointer?]
                                ['n-args :int32]]}
 
 
@@ -265,7 +265,26 @@
    })
 
 
-(defonce julia (dt-ffi/library-singleton #'julia-fns-def))
+;;The symbols we need from the shared library
+(def julia-symbols-def ["jl_core_module"
+                        "jl_base_module"
+                        "jl_bool_type"
+                        "jl_symbol_type"
+                        "jl_string_type"
+                        "jl_bool_type"
+                        "jl_int8_type"
+                        "jl_uint8_type"
+                        "jl_int16_type"
+                        "jl_uint16_type"
+                        "jl_int32_type"
+                        "jl_uint32_type"
+                        "jl_int64_type"
+                        "jl_uint64_type"
+                        "jl_float32_type"
+                        "jl_float64_type"])
+
+
+(defonce julia (dt-ffi/library-singleton #'julia-fns-def #'julia-symbols-def nil))
 (dt-ffi/library-singleton-reset! julia)
 (defn set-library-instance!
   [lib-instance]
@@ -317,16 +336,20 @@
   * `:enable-signals?` - true to enable julia signal handling.  If false you must disable
      threads (set n-threads to 1).  If using signals you must preload libjsig.so - see
      documentation.  Defaults to false.
-  * `:n-threads` - Set the number of threads to use with julia.   Defaults to `:auto` unless
-     signals are disabled."
+  * `:n-threads` - Set the number of threads to use with julia.   Defaults to nil which means
+     unless JULIA_NUM_THREADS is set signals are disabled."
   [& [{:keys [enable-signals? n-threads]
        :or {enable-signals? false}}]]
   (resource/stack-resource-context
-   (let [n-threads (if enable-signals?
-                     (or n-threads :auto)
-                     1)
+   (let [n-threads (cond
+                     (= n-threads -1) (.availableProcessors (Runtime/getRuntime))
+                     (nil? n-threads) (when-let [env-val (System/getenv "JULIA_NUM_THREADS")]
+                                        (Integer/parseInt env-val))
+                     (= n-threads :auto) :auto
+                     :else (int n-threads))
+         enable-signals? (or enable-signals? (not (nil? n-threads)))
          opt-strs [(format "--handle-signals=%s" (if enable-signals? "yes" "no"))
-                   "--threads" (str n-threads)]
+                   "--threads" (str (or n-threads 1))]
          ptr-type (ffi-size-t/lower-ptr-type :pointer)
          str-ptrs (mapv (comp native-addr dt-ffi/string->c) opt-strs)
          argv (dt/make-container :native-heap ptr-type str-ptrs)
@@ -429,9 +452,9 @@
   "If the typename is a known typename, return the keyword typename.
   Else return typeof_str."
   [item-ptr]
-  (if-let [retval (get type-ptr->kwd item-ptr)]
-    retval
-    (when (not= 0 (ffi-ptr-value/ptr-value? item-ptr))
+  (when (not= 0 (ffi-ptr-value/ptr-value? item-ptr))
+    (if-let [retval (get type-ptr->kwd (jl_typeof item-ptr))]
+      retval
       (let [^String type-str (jl_typeof_str item-ptr)]
         (if (.startsWith type-str "#")
           :jl-function

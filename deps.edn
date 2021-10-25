@@ -1,4 +1,56 @@
 {:paths ["src"]
  :deps {org.clojure/clojure  {:mvn/version "1.10.2" :scope "provided"}
         cnuernber/dtype-next {:mvn/version "8.037"}
-        net.java.dev.jna/jna {:mvn/version "5.9.0"}}}
+        net.java.dev.jna/jna {:mvn/version "5.9.0"}}
+ :aliases
+ {:jdk-17
+  {:jvm-opts ["--add-modules" "jdk.incubator.foreign"
+              "--enable-native-access=ALL-UNNAMED"]}
+  :test
+  {:extra-deps {com.cognitect/test-runner
+                {:git/url "https://github.com/cognitect-labs/test-runner"
+                 :sha "209b64504cb3bd3b99ecfec7937b358a879f55c1"}
+                ch.qos.logback/logback-classic {:mvn/version "1.1.3"}}
+   :extra-paths ["test"]
+   :main-opts ["-m" "cognitect.test-runner"]}
+  :depstar
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.193"}}
+   :ns-default hf.depstar
+   :exec-fn hf.depstar/jar
+   :exec-args {:group-id "com.cnuernber"
+               :artifact-id "libjulia-clj"
+               :version "1.000-beta-1"
+               :sync-pom true
+               :jar "target/libjulia-clj.jar"}}
+  ;;deploy to clojars
+  :deploy
+  {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+   :exec-fn deps-deploy.deps-deploy/deploy
+   :exec-args {:installer :remote
+               :sign-releases? true
+               :artifact "target/libjulia-clj.jar"}}
+
+  :install
+  {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+   :exec-fn deps-deploy.deps-deploy/deploy
+   :exec-args {:installer :local
+               :artifact "target/libjulia-clj.jar"}}
+  :codox
+  {:extra-deps {codox-theme-rdash/codox-theme-rdash {:mvn/version "0.1.2"}
+                com.cnuernber/codox {:mvn/version "1.000"}
+                cider/cider-nrepl {:mvn/version "0.26.0"}}
+   :extra-paths ["test" "resources"]
+   :exec-fn codox.main/-main
+   :exec-args {:arg-paths [[:aliases :depstar :exec-args]]
+               :description "Julia bindings for Clojure and the JVM"
+               :metadata {:doc/format :markdown}
+               :themes [:rdash]
+               :source-paths ["src"]
+               :output-path "docs"
+               :source-uri "https://github.com/cnuernber/libjulia-clj/blob/master/{filepath}#L{line}"
+               :namespaces [libjulia-clj.julia
+                            libjulia-clj.modules.Base
+                            libjulia-clj.modules.Core
+                            libjulia-clj.modules.LinearAlgebra
+                            libjulia-clj.modules.DifferentialEquations]}}}
+ }

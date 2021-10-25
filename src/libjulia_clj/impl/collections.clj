@@ -1,9 +1,9 @@
 (ns libjulia-clj.impl.collections
   (:require [libjulia-clj.impl.base :as base]
             [libjulia-clj.impl.protocols :as julia-proto]
-            [libjulia-clj.impl.jna :as julia-jna]
+            [libjulia-clj.impl.ffi :as julia-ffi]
             [tech.v3.datatype.pprint :as dtype-pp]
-            [tech.v3.jna :as jna])
+            [tech.v3.datatype.ffi :as dt-ffi])
   (:import [java.util Map Iterator]
            [clojure.lang ILookup ISeq MapEntry]
            [com.sun.jna Pointer]
@@ -13,9 +13,9 @@
 (deftype JuliaDict [^Pointer handle]
   julia-proto/PToJulia
   (->julia [item] handle)
-  jna/PToPtr
-  (is-jna-ptr-convertible? [this] true)
-  (->ptr-backing-store [this] handle)
+  dt-ffi/PToPointer
+  (convertible-to-pointer? [this] true)
+  (->pointer [this] handle)
   Map
   (size [this] (int (base/module-fn :length handle)))
   (isEmpty [this] (boolean (base/module-fn :isempty handle)))
@@ -58,13 +58,13 @@
 (deftype JuliaTuple [^Pointer handle]
   julia-proto/PToJulia
   (->julia [item] handle)
-  jna/PToPtr
-  (is-jna-ptr-convertible? [this] true)
-  (->ptr-backing-store [this] handle)
+  dt-ffi/PToPointer
+  (convertible-to-pointer? [this] true)
+  (->pointer [this] handle)
   ObjectReader
   (elemwiseDatatype [this]
     (-> (base/module-fn :eltype handle)
-        (julia-jna/julia-eltype->datatype)))
+        (julia-ffi/julia-eltype->datatype)))
   (lsize [this] (long (base/module-fn :length handle)))
   (readObject [this idx]
     (base/module-fn :getindex handle (int (inc idx))))

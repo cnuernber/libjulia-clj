@@ -172,14 +172,12 @@
 
   Options:
 
-  * `:julia-library-path` - Explicitly declare the location of the libjulia shared library.
+  * `:julia-home` - Explicitly declare the env var julia-home.
   * `:n-threads` - Set to -1 to set to n-cpus.  Defaults to nil which means single threaded
      unless the JULIA_NUM_THREADS environment variable is set.  Note that this has implications
      for application stability - see the signals.md topic.
   * `:signals-enabled?` - Users do not usually need to set this.  This allows users to disable
-     all of Julia's signal handling most likely leading to a crash.  See the signals.md topic.
-  * `:optimization-level` - 0-3, defaults to 0 - explicitly enable more sophisticated julia
-     optimizations."
+     all of Julia's signal handling most likely leading to a crash.  See the signals.md topic."
   ([{:keys [julia-library-path]
      :as options}]
    (julia-ffi/initialize! options)
@@ -190,6 +188,7 @@
      ;;cause an instantaneous and unceremonious exit :-).
      (julia-ffi/init-process-options options)
      (julia-ffi/jl_init__threading)
+     (julia-ffi/initialize-type-map!)
      (initialize-julia-root-map!)
      (initialize-module-functions!))
    :ok)
