@@ -347,7 +347,9 @@
                                         (Integer/parseInt env-val))
                      (= n-threads :auto) :auto
                      :else (int n-threads))
-         enable-signals? (or enable-signals? (not (nil? n-threads)))
+         enable-signals? (if (boolean? enable-signals?)
+                           enable-signals?
+                           (or enable-signals? (not (nil? n-threads))))
          opt-strs [(format "--handle-signals=%s" (if enable-signals? "yes" "no"))
                    "--threads" (str (or n-threads 1))]
          ptr-type (ffi-size-t/lower-ptr-type :pointer)
