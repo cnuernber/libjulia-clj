@@ -47,9 +47,7 @@
                :themes [:rdash]
                :source-paths ["src"]
                :output-path "docs"
+               :doc-paths ["topics"]
                :source-uri "https://github.com/cnuernber/libjulia-clj/blob/master/{filepath}#L{line}"
-               :namespaces [libjulia-clj.julia
-                            libjulia-clj.modules.Base
-                            libjulia-clj.modules.Core
-                            libjulia-clj.modules.LinearAlgebra]}}}
+               :namespaces [libjulia-clj.julia]}}}
  }
