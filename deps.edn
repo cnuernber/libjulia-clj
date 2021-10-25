@@ -51,6 +51,5 @@
                :namespaces [libjulia-clj.julia
                             libjulia-clj.modules.Base
                             libjulia-clj.modules.Core
-                            libjulia-clj.modules.LinearAlgebra
-                            libjulia-clj.modules.DifferentialEquations]}}}
+                            libjulia-clj.modules.LinearAlgebra]}}}
  }
