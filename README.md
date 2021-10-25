@@ -6,16 +6,14 @@
 
 * [API docs](https://cnuernber.github.io/libjulia-clj/)
 * [In-Depth Example](https://github.com/cnuernber/kmeans-mnist)
+* We now support julia-1.7.X so you can use it with the latest Julia.
 
 ## Usage
 
 Install julia and set JULIA_HOME:
 
 ```console
-wget https://julialang-s3.julialang.org/bin/linux/x64/1.5/julia-1.5.3-linux-x86_64.tar.gz \
-  && tar -xvzf julia-1.5.3-linux-x86_64.tar.gz
-
-export JULIA_HOME=$(pwd)/julia-1.5.3
+scripts/activate-julia
 ```
 
 In your repl, load the julia base namespace and initialize the system.
