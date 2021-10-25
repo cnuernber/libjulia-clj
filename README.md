@@ -1,6 +1,6 @@
 # julia-clj
 
-[![Clojars Project](https://img.shields.io/clojars/v/cnuernber/libjulia-clj.svg)](https://clojars.org/cnuernber/libjulia-clj)
+[![Clojars Project](https://img.shields.io/clojars/v/com.cnuernber/libjulia-clj.svg)](https://clojars.org/cnuernber/libjulia-clj)
 [![travis integration](https://travis-ci.com/cnuernber/libjulia-clj.svg?branch=master)](https://travis-ci.com/cnuernber/libjulia-clj)
 
 
