@@ -291,6 +291,13 @@
   (dt-ffi/library-singleton-set-instance! julia lib-instance))
 
 
+(defn- windows-os?
+  []
+  (-> (System/getProperty "os.name")
+      (.toLowerCase)
+      (.contains "windows")))
+
+
 (defn initialize!
   "Load the libjulia library.  This does no further initialization, so it is necessary
   to the call 'init-process-options' and then 'jl_init__threading' at which point
@@ -300,7 +307,12 @@
         _ (errors/when-not-errorf jh "JULIA_HOME is unset")
         jdirs ["lib" "bin"]
         jpaths (map #(-> (java.nio.file.Paths/get
-                          jh (into-array String [% (System/mapLibraryName "julia")]))
+                          jh (into-array String [% (System/mapLibraryName
+                                                    (if (windows-os?)
+                                                      ;;julia is libXXX nomenclature on
+                                                      ;;all operating systems.
+                                                      "libjulia"
+                                                      "julia"))]))
                          (.toString))
                     jdirs)
         found-dir (-> (filter #(.exists (java.io.File. ^String %)) jpaths)
@@ -310,6 +322,7 @@
 - is JULIA_HOME set incorrectly?", (interpose jpaths "\n"))
     (dt-ffi/library-singleton-set! julia found-dir)
     :ok))
+
 
 (defn find-fn [fn-name] (dt-ffi/library-singleton-find-fn julia fn-name))
 

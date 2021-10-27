@@ -19,7 +19,7 @@
    :exec-fn hf.depstar/jar
    :exec-args {:group-id "com.cnuernber"
                :artifact-id "libjulia-clj"
-               :version "1.000-beta-2"
+               :version "1.000-beta-3"
                :sync-pom true
                :jar "target/libjulia-clj.jar"}}
   ;;deploy to clojars
