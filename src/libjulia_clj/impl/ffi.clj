@@ -297,15 +297,18 @@
   'jl_is_initialized' should be true."
   [& [options]]
   (let [jh (or (:julia-home options) (System/getenv "JULIA_HOME"))
-        _ (errors/when-not-errorf jh "JULIA_HOME unset")
-        jpath (-> (java.nio.file.Paths/get jh (into-array String ["lib"
-                                                                  (System/mapLibraryName
-                                                                   "julia")]))
-                  (.toString))]
-    (errors/when-not-errorf (.exists (java.io.File. jpath))
-                            "Julia shared library not found at path %s
-- is JULIA_HOME set incorrectly?", jpath)
-    (dt-ffi/library-singleton-set! julia jpath)
+        _ (errors/when-not-errorf jh "JULIA_HOME is unset")
+        jdirs ["lib" "bin"]
+        jpaths (map #(-> (java.nio.file.Paths/get
+                          jh (into-array String [% (System/mapLibraryName "julia")]))
+                         (.toString))
+                    jdirs)
+        found-dir (-> (filter #(.exists (java.io.File. ^String %)) jpaths)
+                      first)]
+    (errors/when-not-errorf found-dir
+                            "Julia shared library not found at paths\n%s
+- is JULIA_HOME set incorrectly?", (interpose jpaths "\n"))
+    (dt-ffi/library-singleton-set! julia found-dir)
     :ok))
 
 (defn find-fn [fn-name] (dt-ffi/library-singleton-find-fn julia fn-name))
