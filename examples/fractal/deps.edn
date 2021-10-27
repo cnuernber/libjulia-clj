@@ -1,2 +1,2 @@
 {:paths ["src"]
- :deps {com.cnuernber/libjulia-clj         {:mvn/version "1.000-beta-2"}}}
+ :deps {com.cnuernber/libjulia-clj         {:mvn/version "1.000-beta-3"}}}
