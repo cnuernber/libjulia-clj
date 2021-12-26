@@ -1,7 +1,7 @@
 {:paths ["src"]
  :deps {org.clojure/clojure  {:mvn/version "1.10.2" :scope "provided"}
-        cnuernber/dtype-next {:mvn/version "8.037"}
-        net.java.dev.jna/jna {:mvn/version "5.9.0"}}
+        cnuernber/dtype-next {:mvn/version "8.043"}
+        net.java.dev.jna/jna {:mvn/version "5.10.0"}}
  :aliases
  {:jdk-17
   {:jvm-opts ["--add-modules" "jdk.incubator.foreign"
@@ -22,13 +22,32 @@
                :version "1.000-beta-3"
                :sync-pom true
                :jar "target/libjulia-clj.jar"}}
-  ;;deploy to clojars
+
   :deploy
   {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
    :exec-fn deps-deploy.deps-deploy/deploy
    :exec-args {:installer :remote
                :sign-releases? true
                :artifact "target/libjulia-clj.jar"}}
+
+  :depstar-aot
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.193"}}
+   :ns-default hf.depstar
+   :exec-fn hf.depstar/jar
+   :exec-args {:group-id "com.cnuernber"
+               :artifact-id "libjulia-clj"
+               :version "1.000-aot-beta-3"
+               :sync-pom true
+               :aot true
+               :compile-ns [libjulia-clj.java-api]
+               :jar "target/libjulia-clj-aot.jar"}}
+  ;;deploy to clojars
+  :deploy-aot
+  {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+   :exec-fn deps-deploy.deps-deploy/deploy
+   :exec-args {:installer :remote
+               :sign-releases? true
+               :artifact "target/libjulia-clj-aot.jar"}}
 
   :install
   {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
@@ -49,5 +68,6 @@
                :output-path "docs"
                :doc-paths ["topics"]
                :source-uri "https://github.com/cnuernber/libjulia-clj/blob/master/{filepath}#L{line}"
-               :namespaces [libjulia-clj.julia]}}}
+               :namespaces [libjulia-clj.julia
+                            libjulia-clj.java-api]}}}
  }
