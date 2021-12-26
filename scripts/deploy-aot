@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -e
+
+rm -rf classes
+
+source scripts/local-julia-env
+
+clj -X:depstar-aot
+clj -X:deploy-aot

@@ -16,3 +16,4 @@ openj9
 .cpcache
 *.png
 julia-1.*
+*.asc
