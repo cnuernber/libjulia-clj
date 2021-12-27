@@ -1,6 +1,6 @@
 {:paths ["src"]
  :deps {org.clojure/clojure  {:mvn/version "1.10.2" :scope "provided"}
-        cnuernber/dtype-next {:mvn/version "8.043"}
+        cnuernber/dtype-next {:mvn/version "8.053"}
         net.java.dev.jna/jna {:mvn/version "5.10.0"}}
  :aliases
  {:jdk-17
@@ -36,7 +36,7 @@
    :exec-fn hf.depstar/jar
    :exec-args {:group-id "com.cnuernber"
                :artifact-id "libjulia-clj"
-               :version "1.000-aot-beta-4"
+               :version "1.000-aot-beta-5"
                :sync-pom true
                :aot true
                :compile-ns [libjulia-clj.java-api]
