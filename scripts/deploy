@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+rm -rf classes
+
+source scripts/local-julia-env
+
+clj -M:test
+clj -X:codox
+clj -X:depstar
+clj -X:deploy
