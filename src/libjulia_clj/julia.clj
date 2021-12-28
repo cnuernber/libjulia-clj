@@ -127,6 +127,13 @@ user> jl-ary
      ~@body))
 
 
+(defn ^:no-doc in-jl-ctx
+  [^java.util.function.Supplier supplier]
+  (with-stack-context
+    (-> (.get supplier)
+        (julia-proto/julia->jvm nil))))
+
+
 (defn set-julia-gc-root-log-level!
   "Set the log level to use when rooting/unrooting julia objects.  We automatically
   root julia objects in a julia id dictionary that we expose to JVM objects.

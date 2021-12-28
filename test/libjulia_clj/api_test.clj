@@ -12,5 +12,5 @@
     (is (instance? clojure.lang.IFn getindex))
     (is (= 1 (getindex tuple 1)))
     (is (= 2 (getindex tuple 2))))
-  (let [ary (japi/-createJlArray "int32" [2 3] (range 6))]
+  (let [ary (japi/-createArray "int32" [2 3] (range 6))]
     (japi/-arrayToJVM ary)))

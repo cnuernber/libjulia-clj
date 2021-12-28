@@ -6,12 +6,8 @@
 ```java
   java_api.initialize(options);
 ```"
-  (:require [tech.v3.datatype :as dtype]
-            [tech.v3.tensor :as dtt]
-            [tech.v3.datatype.jvm-map :as jvm-map]
-            [libjulia-clj.julia :as jl]
-            [libjulia-clj.impl.protocols :as julia-proto])
-  (:import [java.util Map]
+  (:import [clojure.java.api Clojure]
+           [java.util Map Map$Entry]
            [java.util.function Supplier])
   (:gen-class
    :name libjulia_clj.java_api
@@ -27,6 +23,13 @@
 (set! *warn-on-reflection* true)
 
 
+(defonce requires* (delay
+                     (let [require (Clojure/var "clojure.core" "require")]
+                       (require (Clojure/read "tech.v3.datatype"))
+                       (require (Clojure/read "libjulia-clj.julia"))
+                       (require (Clojure/read "tech.v3.tensor")))))
+
+
 (defn -initialize
   "Initialize the julia interpreter.  See documentation for [[libjulia-clj.julia/initialize!]].
   Options may be null or must be a map of string->value for one of the supported initialization
@@ -40,11 +43,13 @@
   (japi/-initialize (jvm-map/hash-map {\"n-threads\" 8}))
 ```"
   [options]
-  (jl/initialize! (->> options
-                       (map (fn [entry]
-                              [(keyword (jvm-map/entry-key entry))
-                               (jvm-map/entry-value entry)]))
-                       (into {}))))
+  @requires*
+  ((Clojure/var "libjulia-clj.julia" "initialize!")
+   (->> options
+        (map (fn [^Map$Entry entry]
+               [(keyword (.getKey entry))
+                (.getValue entry)]))
+        (into {}))))
 
 
 (defn -runString
@@ -52,7 +57,7 @@
   a julia object if not.  The returned object will have a property overloaded
   toString method for introspection."
   [^String data]
-  (jl/jl data))
+  ((Clojure/var "libjulia-clj.julia" "jl") data))
 
 
 (defn -inJlContext
@@ -60,9 +65,7 @@
   just after the function returns.  The function must return pure JVM data - it cannot
   return a reference to a julia object."
   [^Supplier fn]
-  (jl/with-stack-context
-    (-> (.get fn)
-        (julia-proto/julia->jvm))))
+  ((Clojure/var "libjulia-clj.julia" "in-jl-ctx") fn))
 
 
 (defn -namedTuple
@@ -92,7 +95,7 @@ end\")
       (is (= 11.0 (add-fn 8))))
 ```"
   [^Map data]
-  (jl/named-tuple data))
+  ((Clojure/var "libjulia-clj.julia" "named-tuple") data))
 
 
 (defn -createArray
@@ -106,10 +109,12 @@ end\")
   * `data` may be a java array or an implementation of java.util.List.  Ideally data is
   of the same datatype as data."
   [datatype shape data]
-  (let [datatype (keyword datatype)]
-    (-> (dtt/->tensor data :datatype (keyword datatype))
-        (dtt/reshape shape)
-        (jl/->array))))
+  (let [datatype (keyword datatype)
+        reshape (Clojure/var "tech.v3.tensor" "reshape")
+        ->array (Clojure/var "libjulia-clj.julia" "->array")]
+    (-> ((Clojure/var "tech.v3.tensor" "->tensor") data :datatype (keyword datatype))
+        (reshape shape)
+        (->array))))
 
 
 (defn -arrayToJVM
@@ -117,7 +122,8 @@ end\")
   datatype is a string denoting one of the supported datatypes, and data is a primitive
   array of data."
   [jlary]
-  (let [tens-data (dtt/as-tensor jlary)]
-    {"shape" (dtype/->int-array (dtype/shape tens-data))
-     "datatype" (name (dtype/elemwise-datatype tens-data))
-     "data" (dtype/->array tens-data)}))
+  (let [tens-data ((Clojure/var "tech.v3.tensor" "as-tensor") jlary)]
+    {"shape" ((Clojure/var "tech.v3.datatype" "->int-array")
+              ((Clojure/var "tech.v3.datatype" "shape") tens-data))
+     "datatype" (name ((Clojure/var "tech.v3.datatype" "elemwise-datatype") tens-data))
+     "data" ((Clojure/var "tech.v3.datatype" "->array") tens-data)}))

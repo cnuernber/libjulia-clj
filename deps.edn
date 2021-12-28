@@ -19,7 +19,9 @@
    :exec-fn hf.depstar/jar
    :exec-args {:group-id "com.cnuernber"
                :artifact-id "libjulia-clj"
-               :version "1.000-beta-3"
+               :version "1.000-beta-6"
+               :aot true
+               :compile-ns [libjulia-clj.java-api]
                :sync-pom true
                :jar "target/libjulia-clj.jar"}}
 
@@ -29,25 +31,6 @@
    :exec-args {:installer :remote
                :sign-releases? true
                :artifact "target/libjulia-clj.jar"}}
-
-  :depstar-aot
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.193"}}
-   :ns-default hf.depstar
-   :exec-fn hf.depstar/jar
-   :exec-args {:group-id "com.cnuernber"
-               :artifact-id "libjulia-clj"
-               :version "1.000-aot-beta-5"
-               :sync-pom true
-               :aot true
-               :compile-ns [libjulia-clj.java-api]
-               :jar "target/libjulia-clj-aot.jar"}}
-  ;;deploy to clojars
-  :deploy-aot
-  {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
-   :exec-fn deps-deploy.deps-deploy/deploy
-   :exec-args {:installer :remote
-               :sign-releases? true
-               :artifact "target/libjulia-clj-aot.jar"}}
 
   :install
   {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
