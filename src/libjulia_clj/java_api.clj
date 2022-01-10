@@ -118,12 +118,13 @@ end\")
 
 
 (defn -arrayToJVM
-  "Returns a map with three keys - shape, datatype, and data.  Shape is an integer array,
-  datatype is a string denoting one of the supported datatypes, and data is a primitive
-  array of data."
+  "Returns a map with three keys - shape, datatype, and data.  Shape is an integer array
+  that is the reverse of the julia shape, datatype is a string denoting one of the supported
+  datatypes, and data is a primitive array of data."
   [jlary]
-  (let [tens-data ((Clojure/var "tech.v3.tensor" "as-tensor") jlary)]
-    {"shape" ((Clojure/var "tech.v3.datatype" "->int-array")
-              ((Clojure/var "tech.v3.datatype" "shape") tens-data))
+  (let [tens-data ((Clojure/var "tech.v3.tensor" "as-tensor") jlary)
+        tens-shape ((Clojure/var "tech.v3.datatype" "shape") tens-data)
+        n-dims (count tens-shape)]
+    {"shape" ((Clojure/var "tech.v3.datatype" "->int-array") tens-shape)
      "datatype" (name ((Clojure/var "tech.v3.datatype" "elemwise-datatype") tens-data))
      "data" ((Clojure/var "tech.v3.datatype" "->array") tens-data)}))

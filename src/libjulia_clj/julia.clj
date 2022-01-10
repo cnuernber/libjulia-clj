@@ -153,15 +153,16 @@ user> jl-ary
   jl-undef* (delay (jl "Base.undef")))
 
 
+(defonce zeros* (delay (jl "zeros")))
+
+
 (defn new-array
   "Create a new, uninitialized dense julia array.  Because Julia is column major
   while tech.v3.datatype is row major, the returned array's size will be the
   reverse of dtype/shape as that keeps the same in memory alignment of data."
   ([shape datatype]
-   (let [jl-dtype (julia-ffi/lookup-library-type datatype)
-         ary-type (julia-ffi/with-disabled-julia-gc
-                    (apply-type @base-ary-type* jl-dtype))]
-     (apply ary-type @jl-undef* shape)))
+   (let [jl-dtype (julia-ffi/lookup-library-type datatype)]
+     (apply @zeros* jl-dtype shape)))
   ([shape]
    (new-array shape :float64)))
 

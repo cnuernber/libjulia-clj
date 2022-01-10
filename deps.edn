@@ -19,7 +19,7 @@
    :exec-fn hf.depstar/jar
    :exec-args {:group-id "com.cnuernber"
                :artifact-id "libjulia-clj"
-               :version "1.000-beta-6"
+               :version "1.000-beta-7"
                :aot true
                :compile-ns [libjulia-clj.java-api]
                :sync-pom true
