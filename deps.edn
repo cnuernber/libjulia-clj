@@ -1,6 +1,6 @@
 {:paths ["src"]
  :deps {org.clojure/clojure  {:mvn/version "1.10.2" :scope "provided"}
-        cnuernber/dtype-next {:mvn/version "8.053"}
+        cnuernber/dtype-next {:mvn/version "8.062"}
         net.java.dev.jna/jna {:mvn/version "5.10.0"}}
  :aliases
  {:jdk-17
@@ -19,7 +19,7 @@
    :exec-fn hf.depstar/jar
    :exec-args {:group-id "com.cnuernber"
                :artifact-id "libjulia-clj"
-               :version "1.000-beta-7"
+               :version "1.000-beta-8"
                :aot true
                :compile-ns [libjulia-clj.java-api]
                :sync-pom true
@@ -39,7 +39,7 @@
                :artifact "target/libjulia-clj.jar"}}
   :codox
   {:extra-deps {codox-theme-rdash/codox-theme-rdash {:mvn/version "0.1.2"}
-                com.cnuernber/codox {:mvn/version "1.000"}
+                com.cnuernber/codox {:mvn/version "1.001"}
                 cider/cider-nrepl {:mvn/version "0.26.0"}}
    :extra-paths ["test" "resources"]
    :exec-fn codox.main/-main
