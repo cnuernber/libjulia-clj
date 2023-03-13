@@ -28,7 +28,7 @@ user> (System/gc)
 *** Closed on Mon Dec 14 16:14:45 2020 ***
 ```
 
-Julia has an option to disable it's use of signals but this results in a crash as it
+Julia has an option to disable its use of signals but this results in a crash as it
 requires the use of at least `SIGINT` in order to manage garbage collection in
 multithreaded code.
 
