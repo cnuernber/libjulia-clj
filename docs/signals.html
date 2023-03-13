@@ -23,7 +23,7 @@ user&gt; (System/gc)
 
 *** Closed on Mon Dec 14 16:14:45 2020 ***
 </code></pre>
-<p>Julia has an option to disable it's use of signals but this results in a crash as it
+<p>Julia has an option to disable its use of signals but this results in a crash as it
 requires the use of at least <code>SIGINT</code> in order to manage garbage collection in
 multithreaded code.</p>
 <p>If we simply disable Julia's use of signals then single-threaded code works fine.
